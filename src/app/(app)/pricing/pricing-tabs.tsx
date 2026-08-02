@@ -7,6 +7,7 @@ const TABS = [
   { href: "/pricing", label: "Rule Set" },
   { href: "/pricing/attributes", label: "Attributes" },
   { href: "/pricing/regions", label: "Regions" },
+  { href: "/pricing/simulator", label: "Simulator" },
 ]
 
 export default function PricingTabs() {
