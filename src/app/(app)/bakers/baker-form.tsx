@@ -52,7 +52,7 @@ export default function BakerForm({ action, defaultValues = {}, submitLabel }: P
     <form action={action} className="space-y-8">
       <section className="space-y-4">
         <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">Identity</h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Name *">
             <input name="name" required defaultValue={dv.name ?? ""} className={inputClass} />
           </Field>
@@ -73,7 +73,7 @@ export default function BakerForm({ action, defaultValues = {}, submitLabel }: P
 
       <section className="space-y-4">
         <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">Geography</h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Address">
             <input name="address" defaultValue={dv.address ?? ""} className={inputClass} />
           </Field>
@@ -108,7 +108,7 @@ export default function BakerForm({ action, defaultValues = {}, submitLabel }: P
 
       <section className="space-y-4">
         <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">Onboarding / CRM</h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Status">
             <select name="status" defaultValue={dv.status ?? "prospect"} className={inputClass}>
               {STATUS_VALUES.map((s) => (
@@ -139,7 +139,7 @@ export default function BakerForm({ action, defaultValues = {}, submitLabel }: P
         <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">
           Fulfillment / commerce
         </h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Avg turnaround (hours)">
             <input
               name="avg_turnaround_hours"

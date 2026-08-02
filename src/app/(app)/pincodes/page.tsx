@@ -54,7 +54,7 @@ export default async function PincodesPage({
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-6">
+    <div className="mx-auto max-w-[1600px] px-6 py-6">
       <form method="GET" className="mb-4 flex gap-2">
         <input
           type="text"
@@ -89,10 +89,10 @@ export default async function PincodesPage({
             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-2">Pincode</th>
-                <th className="px-4 py-2">District</th>
-                <th className="px-4 py-2">State</th>
-                <th className="px-4 py-2">Sample office</th>
-                <th className="px-4 py-2">Offices</th>
+                <th className="hidden px-4 py-2 sm:table-cell">District</th>
+                <th className="hidden px-4 py-2 sm:table-cell">State</th>
+                <th className="hidden px-4 py-2 md:table-cell">Sample office</th>
+                <th className="hidden px-4 py-2 sm:table-cell">Offices</th>
                 <th className="px-4 py-2">Status</th>
                 <th className="px-4 py-2" />
               </tr>
@@ -104,11 +104,14 @@ export default async function PincodesPage({
                     <Link href={`/pincodes/${r.pincode}`} className="hover:underline">
                       {r.pincode}
                     </Link>
+                    <p className="text-[11px] font-normal text-slate-400 sm:hidden">
+                      {[r.district, r.state_name].filter(Boolean).join(", ") || "—"}
+                    </p>
                   </td>
-                  <td className="px-4 py-2 text-slate-600">{r.district || "—"}</td>
-                  <td className="px-4 py-2 text-slate-600">{r.state_name || "—"}</td>
-                  <td className="px-4 py-2 text-slate-600">{r.sample_office || "—"}</td>
-                  <td className="px-4 py-2 text-slate-600">
+                  <td className="hidden px-4 py-2 text-slate-600 sm:table-cell">{r.district || "—"}</td>
+                  <td className="hidden px-4 py-2 text-slate-600 sm:table-cell">{r.state_name || "—"}</td>
+                  <td className="hidden px-4 py-2 text-slate-600 md:table-cell">{r.sample_office || "—"}</td>
+                  <td className="hidden px-4 py-2 text-slate-600 sm:table-cell">
                     <Link href={`/pincodes/${r.pincode}`} className="hover:underline">
                       {r.office_count}{r.office_count > 1 ? " — view all" : ""}
                     </Link>

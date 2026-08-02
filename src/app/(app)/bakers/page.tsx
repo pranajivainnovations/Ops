@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { getDbPool } from "@/lib/db"
+import BakerTabs from "./baker-tabs"
 
 export const dynamic = "force-dynamic"
 
@@ -13,7 +14,7 @@ export default async function BakersPage() {
 
   return (
     <main className="min-h-screen flex-1 bg-slate-50">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-6 py-4">
         <h1 className="text-base font-bold text-slate-900">Bakers</h1>
         <Link
           href="/bakers/new"
@@ -22,6 +23,7 @@ export default async function BakersPage() {
           + Add baker
         </Link>
       </header>
+      <BakerTabs />
 
       <div className="mx-auto max-w-5xl px-6 py-6">
         {result.rows.length === 0 ? (
@@ -32,23 +34,27 @@ export default async function BakersPage() {
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-2">Name</th>
-                  <th className="px-4 py-2">Location</th>
+                  <th className="hidden px-4 py-2 sm:table-cell">Location</th>
                   <th className="px-4 py-2">Status</th>
-                  <th className="px-4 py-2">Badges</th>
-                  <th className="px-4 py-2">Active</th>
+                  <th className="hidden px-4 py-2 sm:table-cell">Badges</th>
+                  <th className="hidden px-4 py-2 sm:table-cell">Active</th>
                   <th className="px-4 py-2" />
                 </tr>
               </thead>
               <tbody>
                 {result.rows.map((b) => (
                   <tr key={b.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-2 font-medium text-slate-900">{b.name}</td>
-                    <td className="px-4 py-2 text-slate-600">
+                    <td className="px-4 py-2 font-medium text-slate-900">
+                      <Link href={`/bakers/${b.id}`} className="hover:underline">
+                        {b.name}
+                      </Link>
+                    </td>
+                    <td className="hidden px-4 py-2 text-slate-600 sm:table-cell">
                       {[b.city, b.state].filter(Boolean).join(", ") || "—"}
                       {b.pincode ? ` · ${b.pincode}` : ""}
                     </td>
                     <td className="px-4 py-2 text-slate-600">{b.status}</td>
-                    <td className="px-4 py-2">
+                    <td className="hidden px-4 py-2 sm:table-cell">
                       {b.trust_badge && (
                         <span className="mr-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">
                           Trust
@@ -60,7 +66,7 @@ export default async function BakersPage() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2">{b.is_active ? "Yes" : "No"}</td>
+                    <td className="hidden px-4 py-2 sm:table-cell">{b.is_active ? "Yes" : "No"}</td>
                     <td className="px-4 py-2 text-right">
                       <Link
                         href={`/bakers/${b.id}`}

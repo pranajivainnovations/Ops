@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose"
 import bcrypt from "bcryptjs"
+import { cookies } from "next/headers"
 
 export const SESSION_COOKIE = "ops_session"
 const SESSION_DURATION_SECONDS = 60 * 60 * 24 * 7 // 7 days
@@ -42,6 +43,12 @@ export async function hashPassword(plain: string): Promise<string> {
 
 export async function verifyPassword(plain: string, hash: string): Promise<boolean> {
   return bcrypt.compare(plain, hash)
+}
+
+/** Reads and verifies the current request's session cookie — null if not logged in. */
+export async function getCurrentSession(): Promise<SessionPayload | null> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value
+  return token ? verifySessionToken(token) : null
 }
 
 export { SESSION_DURATION_SECONDS }
