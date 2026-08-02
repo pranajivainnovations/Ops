@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 node scripts/seed-admin.js nikhilvermacse@gmail.com "N!kh!l@8092" "Nikhil"  
+
+
+*.tgz
