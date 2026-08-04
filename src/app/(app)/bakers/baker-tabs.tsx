@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 const TABS = [
   { href: "/bakers", label: "All Bakers" },
   { href: "/bakers/discoveries", label: "Discoveries" },
+  { href: "/bakers/assignments", label: "Assignments" },
 ]
 
 export default function BakerTabs() {
