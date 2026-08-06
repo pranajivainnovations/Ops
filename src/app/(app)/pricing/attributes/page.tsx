@@ -1,6 +1,6 @@
 import { getDbPool } from "@/lib/db"
 import PricingTabs from "../pricing-tabs"
-import { addAttribute, addAttributeValue, setValueActive } from "./actions"
+import { addAttribute, addAttributeValue, setValueActive, setRequiresRegeneration } from "./actions"
 
 export const dynamic = "force-dynamic"
 
@@ -11,7 +11,7 @@ export default async function AttributesPage() {
   const categoryId = categoryRes.rows[0]?.id
 
   const attributesRes = await db.query(
-    `SELECT id, key, label, input_type FROM pricing.attributes WHERE category_id = $1 ORDER BY sort_order`,
+    `SELECT id, key, label, input_type, requires_regeneration FROM pricing.attributes WHERE category_id = $1 ORDER BY sort_order`,
     [categoryId]
   )
   const valuesRes = await db.query(
@@ -45,9 +45,24 @@ export default async function AttributesPage() {
         const values = valuesByAttribute.get(attr.id) ?? []
         return (
           <section key={attr.id} className="mb-6 rounded-xl border border-slate-200 bg-white">
-            <h2 className="border-b border-slate-200 px-5 py-3 text-sm font-bold text-slate-900">
-              {attr.label} <span className="font-normal text-slate-400">({attr.key})</span>
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-5 py-3">
+              <h2 className="text-sm font-bold text-slate-900">
+                {attr.label} <span className="font-normal text-slate-400">({attr.key})</span>
+              </h2>
+              <form action={setRequiresRegeneration.bind(null, attr.id, !attr.requires_regeneration)}>
+                <button
+                  type="submit"
+                  title="Does changing this attribute invalidate an already-generated AI cake image?"
+                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    attr.requires_regeneration
+                      ? "bg-violet-100 text-violet-700 hover:bg-violet-200"
+                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                  }`}
+                >
+                  {attr.requires_regeneration ? "✓ Requires regeneration" : "Requires regeneration?"}
+                </button>
+              </form>
+            </div>
             <div className="divide-y divide-slate-100">
               {values.map((v) => (
                 <div key={v.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-2.5">

@@ -57,3 +57,18 @@ export async function setValueActive(valueId: string, active: boolean) {
   )
   revalidatePath("/pricing/attributes")
 }
+
+/**
+ * Flags whether changing this attribute invalidates an already-generated AI cake image — read by
+ * nothing yet (no storefront enforcement exists for this), but OPS can start marking it accurately now
+ * so that follow-up work has real data instead of a blank slate.
+ */
+export async function setRequiresRegeneration(attributeId: string, requiresRegeneration: boolean) {
+  const session = await getCurrentSession()
+  const db = getDbPool()
+  await db.query(
+    `UPDATE pricing.attributes SET requires_regeneration = $1, updated_by = $2, updated_at = NOW() WHERE id = $3`,
+    [requiresRegeneration, session?.userId ?? null, attributeId]
+  )
+  revalidatePath("/pricing/attributes")
+}
