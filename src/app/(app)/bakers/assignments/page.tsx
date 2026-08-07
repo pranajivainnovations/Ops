@@ -24,10 +24,13 @@ export default async function AssignmentsPage() {
      ORDER BY o.created_at DESC`
   )
 
+  // Eligible for "Order via CrossFriend" assignment: either badge counts, not just Trust Badge — a
+  // Blue Tick baker (has their own public store) is just as legitimate a match as a formally
+  // affiliated Trust Badge partner. Still gated on is_active either way.
   const bakersRes = await db.query(
     `SELECT id, name, city, state, pincode, phone, whatsapp_number
      FROM baker_network.bakers
-     WHERE trust_badge = true AND is_active = true
+     WHERE (trust_badge = true OR blue_tick = true) AND is_active = true
      ORDER BY name`
   )
 

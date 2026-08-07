@@ -110,7 +110,7 @@ export default function AssignmentList({ pending, bakers }: Props) {
   if (bakers.length === 0) {
     return (
       <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-        No active partner bakers (trust badge) to assign — add or activate one under All Bakers first.
+        No active bakers with a Blue Tick or Trust Badge to assign — add or activate one under All Bakers first.
       </p>
     )
   }
