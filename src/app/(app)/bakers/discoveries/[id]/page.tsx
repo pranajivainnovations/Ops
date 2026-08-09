@@ -2,6 +2,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getDbPool } from "@/lib/db"
 import { onboardDiscovery, holdDiscovery, dismissDiscovery } from "../../../pincodes/discovery-actions"
+import BackLink from "../../../_components/back-link"
 
 export const dynamic = "force-dynamic"
 
@@ -57,9 +58,7 @@ export default async function DiscoveryDetailPage({
     <main className="min-h-screen flex-1 bg-slate-50">
       <div className="mx-auto max-w-[1600px] px-6 py-6">
        <div className="max-w-3xl">
-        <Link href="/bakers/discoveries" className="text-xs font-semibold text-slate-500 hover:text-slate-800">
-          ← Back to discoveries
-        </Link>
+        <BackLink fallbackHref="/bakers/discoveries" label="Back" />
 
         <div className="mt-3 flex items-start justify-between gap-4">
           <div>

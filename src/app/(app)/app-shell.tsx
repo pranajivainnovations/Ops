@@ -63,7 +63,10 @@ const NAV_GROUPS = [
   {
     label: "Settings",
     accent: "slate",
-    items: [{ href: "/team", label: "Team", icon: "users" }],
+    items: [
+      { href: "/team", label: "Team", icon: "users" },
+      { href: "/settings", label: "Site details", icon: "phone" },
+    ],
   },
 ] as const
 
@@ -106,6 +109,7 @@ const ICONS: Record<string, React.ReactNode> = {
   tag: <path d="M3 9.5V4h5.5l8 8-5.5 5.5-8-8zM6.2 6.2h.01" />,
   sliders: <path d="M4 6h12M4 10h12M4 14h12M8 4v4M13 8v4M6 12v4" />,
   grid: <path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z" />,
+  phone: <path d="M6.5 3h-2A1.5 1.5 0 0 0 3 4.5C3 11.4 8.6 17 15.5 17A1.5 1.5 0 0 0 17 15.5v-2l-3.5-1.5-1.5 2a11 11 0 0 1-4.5-4.5l2-1.5L6.5 3z" />,
   flask: <path d="M8 3v5L4 16a1 1 0 0 0 .9 1.5h10.2A1 1 0 0 0 16 16l-4-8V3M7 3h6M6.5 12h7" />,
   database: <path d="M10 3c3.9 0 7 1 7 2.2S13.9 7.5 10 7.5 3 6.5 3 5.2 6.1 3 10 3zM3 5.2v9.6C3 16.1 6.1 17 10 17s7-.9 7-2.2V5.2M3 10c0 1.3 3.1 2.2 7 2.2s7-.9 7-2.2" />,
   users: <path d="M13 16v-1.5a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3V16M7.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18 16v-1.5a3 3 0 0 0-2.2-2.9M13.5 3.7a3 3 0 0 1 0 5.8" />,

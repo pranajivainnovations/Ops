@@ -42,18 +42,32 @@ export default async function BakersPage() {
                 </tr>
               </thead>
               <tbody>
-                {result.rows.map((b) => (
-                  <tr key={b.id} className="border-b border-slate-100 last:border-0">
+                {result.rows.map((b) => {
+                  // Same full-cell links as the pincode browser: the whole row is the target, not
+                  // just the name. Only the action column stays outside.
+                  const href = `/bakers/${b.id}`
+                  const cell = "block -mx-4 -my-2 px-4 py-2"
+                  return (
+                  <tr
+                    key={b.id}
+                    className="border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50"
+                  >
                     <td className="px-4 py-2 font-medium text-slate-900">
-                      <Link href={`/bakers/${b.id}`} className="hover:underline">
+                      <Link href={href} className={cell}>
                         {b.name}
                       </Link>
                     </td>
                     <td className="hidden px-4 py-2 text-slate-600 sm:table-cell">
-                      {[b.city, b.state].filter(Boolean).join(", ") || "—"}
-                      {b.pincode ? ` · ${b.pincode}` : ""}
+                      <Link href={href} className={cell}>
+                        {[b.city, b.state].filter(Boolean).join(", ") || "—"}
+                        {b.pincode ? ` · ${b.pincode}` : ""}
+                      </Link>
                     </td>
-                    <td className="px-4 py-2 text-slate-600">{b.status}</td>
+                    <td className="px-4 py-2 text-slate-600">
+                      <Link href={href} className={cell}>
+                        {b.status}
+                      </Link>
+                    </td>
                     <td className="hidden px-4 py-2 sm:table-cell">
                       {b.trust_badge && (
                         <span className="mr-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">
@@ -66,17 +80,22 @@ export default async function BakersPage() {
                         </span>
                       )}
                     </td>
-                    <td className="hidden px-4 py-2 sm:table-cell">{b.is_active ? "Yes" : "No"}</td>
+                    <td className="hidden px-4 py-2 sm:table-cell">
+                      <Link href={href} className={cell}>
+                        {b.is_active ? "Yes" : "No"}
+                      </Link>
+                    </td>
                     <td className="px-4 py-2 text-right">
                       <Link
-                        href={`/bakers/${b.id}`}
+                        href={`${href}?tab=edit`}
                         className="text-xs font-semibold text-slate-600 hover:text-slate-900"
                       >
                         Edit
                       </Link>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

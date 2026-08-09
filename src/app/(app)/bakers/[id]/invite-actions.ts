@@ -37,13 +37,25 @@ export async function issueInviteAction(
   const serviceKey = process.env.OPS_SERVICE_KEY
   const portalUrl = process.env.BAKER_PORTAL_URL
 
+  // Names the variable that is actually missing, rather than listing all three and leaving whoever
+  // is on the server to check each one. Note these are compared falsy, not undefined: docker
+  // compose substitutes an absent `${VAR}` with an EMPTY STRING and still sets the variable, so a
+  // container can have all three "present" and none of them usable — which looks identical to this
+  // check and is the common cause in a deployed instance.
+  // The `||` form is kept because it is what narrows the three to non-empty strings for the rest
+  // of this function; building the list separately and testing its length does not.
   if (!backendUrl || !serviceKey || !portalUrl) {
-    // Named explicitly — a generic "something went wrong" here would send someone hunting through
-    // application code for what is a five-second environment fix.
+    const missing = [
+      !backendUrl && "MEDUSA_BACKEND_URL",
+      !serviceKey && "OPS_SERVICE_KEY",
+      !portalUrl && "BAKER_PORTAL_URL",
+    ].filter((name): name is string => Boolean(name))
+
     return {
       ...EMPTY_INVITE_STATE,
-      error:
-        "This OPS instance is missing MEDUSA_BACKEND_URL, OPS_SERVICE_KEY or BAKER_PORTAL_URL.",
+      error: `This OPS instance is missing ${missing.join(" and ")}. Set ${
+        missing.length > 1 ? "them" : "it"
+      } in the server's .env next to docker-compose.yml, then run: docker compose up -d`,
     }
   }
 

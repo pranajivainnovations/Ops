@@ -4,6 +4,7 @@ import { getDbPool } from "@/lib/db"
 import { onboardPincode, offboardPincode } from "../actions"
 import { onboardDiscovery, holdDiscovery, dismissDiscovery } from "../discovery-actions"
 import DiscoveryTrigger from "./discovery-trigger"
+import BackLink from "../../_components/back-link"
 
 export const dynamic = "force-dynamic"
 
@@ -89,9 +90,7 @@ export default async function PincodeDetailPage({
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-6">
-      <Link href="/pincodes" className="text-xs font-semibold text-slate-500 hover:text-slate-800">
-        ← Back to browse
-      </Link>
+      <BackLink fallbackHref="/pincodes" label="Back" />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <div>

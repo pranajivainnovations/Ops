@@ -56,8 +56,8 @@ export default function TroubleshootingPage() {
             ],
             [
               "&ldquo;Invite baker&rdquo; shows a configuration error",
-              <>One of <Term key="b">MEDUSA_BACKEND_URL</Term>, <Term key="c">OPS_SERVICE_KEY</Term>, <Term key="d">BAKER_PORTAL_URL</Term> is unset</>,
-              "The message names which one",
+              <>One of <Term key="b">MEDUSA_BACKEND_URL</Term>, <Term key="c">OPS_SERVICE_KEY</Term>, <Term key="d">BAKER_PORTAL_URL</Term> is unset <strong key="e">or empty</strong></>,
+              <>The message names the missing one. These are <strong key="f">runtime</strong> variables — fix the server&rsquo;s <Term key="g">.env</Term> and run <Term key="h">docker compose up -d</Term>. No rebuild needed.</>,
             ],
             [
               "&ldquo;Unauthorized&rdquo; when inviting",

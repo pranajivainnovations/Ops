@@ -5,6 +5,7 @@ import { getDbPool } from "@/lib/db"
 import BakerForm from "../baker-form"
 import { updateBakerAction } from "../actions"
 import BakerImageUploader from "./baker-image-uploader"
+import BackLink from "../../_components/back-link"
 import BakerDetailTabs, { normalizeTab } from "./detail-tabs"
 import InvitePanel, { type ActivationState } from "./invite-panel"
 import BakerOverview from "./overview"
@@ -92,9 +93,7 @@ export default async function BakerDetailPage({
           {baker.public_id && (
             <span className="text-xs font-semibold text-slate-400">{baker.public_id}</span>
           )}
-          <Link href="/bakers/pipeline" className="text-xs text-slate-500 underline">
-            back to pipeline
-          </Link>
+          <BackLink fallbackHref="/bakers" label="Back" />
         </div>
         <BakerDetailTabs bakerId={id} active={tab} />
       </header>
