@@ -31,6 +31,12 @@ interface Props {
   action: (formData: FormData) => void | Promise<void>
   defaultValues?: DefaultValues
   submitLabel: string
+  /**
+   * Only when creating. On an existing baker the stage moves through the Pipeline panel instead,
+   * which records who moved it and why — a second dropdown here would let a transition slip through
+   * unrecorded, and the history would silently stop being trustworthy.
+   */
+  showStatus?: boolean
 }
 
 const inputClass =
@@ -45,7 +51,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-export default function BakerForm({ action, defaultValues = {}, submitLabel }: Props) {
+export default function BakerForm({
+  action,
+  defaultValues = {},
+  submitLabel,
+  showStatus = true,
+}: Props) {
   const dv = defaultValues
 
   return (
@@ -109,15 +120,17 @@ export default function BakerForm({ action, defaultValues = {}, submitLabel }: P
       <section className="space-y-4">
         <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">Onboarding / CRM</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Status">
-            <select name="status" defaultValue={dv.status ?? "prospect"} className={inputClass}>
-              {STATUS_VALUES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {showStatus && (
+            <Field label="Status">
+              <select name="status" defaultValue={dv.status ?? "prospect"} className={inputClass}>
+                {STATUS_VALUES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field label="Source">
             <input
               name="source"

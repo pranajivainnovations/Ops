@@ -197,6 +197,15 @@ export async function onboardDiscovery(discoveryId: string) {
       ]
     )
     bakerId = inserted.rows[0].id
+
+    // Opens the stage history at the moment this candidate became a real prospect, so the board
+    // can measure how long it has been sitting there. Promotions from a sweep are the most common
+    // way a baker enters the pipeline, so without this most bakers would have no history at all.
+    await db.query(
+      `INSERT INTO baker_network.baker_stage_history (baker_id, from_stage, to_stage, reason)
+       VALUES ($1, NULL, 'prospect', 'Promoted from a Google Places sweep')`,
+      [bakerId]
+    )
   }
 
   await db.query(
