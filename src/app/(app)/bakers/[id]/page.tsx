@@ -3,6 +3,7 @@ import { getDbPool } from "@/lib/db"
 import BakerForm from "../baker-form"
 import { updateBakerAction } from "../actions"
 import BakerImageUploader from "./baker-image-uploader"
+import InvitePanel, { type ActivationState } from "./invite-panel"
 
 export const dynamic = "force-dynamic"
 
@@ -16,16 +17,43 @@ interface BakerImageRow {
 export default async function EditBakerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const db = getDbPool()
-  const [bakerResult, imagesResult] = await Promise.all([
+  const [bakerResult, imagesResult, activationResult] = await Promise.all([
     db.query(`SELECT * FROM baker_network.bakers WHERE id = $1`, [id]),
     db.query(
       `SELECT id, purpose, url, uploaded_at FROM baker_network.baker_images
        WHERE baker_id = $1 ORDER BY uploaded_at DESC`,
       [id]
     ),
+    // Whether this bakery can log in yet. "Claimed" is deliberately derived from the existence of
+    // an active baker_users row rather than stored as a flag — a flag would be a second source of
+    // truth that can disagree with the account it describes.
+    db.query(
+      `SELECT
+         EXISTS (
+           SELECT 1 FROM baker_network.baker_users
+            WHERE baker_id = $1 AND is_active
+         ) AS claimed,
+         (
+           SELECT expires_at FROM baker_network.baker_activations
+            WHERE baker_id = $1 AND used_at IS NULL AND revoked_at IS NULL
+            ORDER BY created_at DESC LIMIT 1
+         ) AS live_invite_expires_at`,
+      [id]
+    ),
   ])
   const baker = bakerResult.rows[0]
   if (!baker) notFound()
+
+  const { claimed, live_invite_expires_at: liveInviteExpiresAt } = activationResult.rows[0]
+  const inviteExpiry: Date | null = liveInviteExpiresAt ? new Date(liveInviteExpiresAt) : null
+
+  const activationState: ActivationState = claimed
+    ? "activated"
+    : !inviteExpiry
+      ? "not_invited"
+      : inviteExpiry.getTime() > Date.now()
+        ? "invited"
+        : "expired"
 
   const profileImage: BakerImageRow | undefined = imagesResult.rows.find((r) => r.purpose === "profile")
   const bannerImage: BakerImageRow | undefined = imagesResult.rows.find((r) => r.purpose === "banner")
@@ -97,6 +125,12 @@ export default async function EditBakerPage({ params }: { params: Promise<{ id: 
               </div>
             )}
           </div>
+
+          <InvitePanel
+            bakerId={id}
+            state={activationState}
+            expiresAt={inviteExpiry ? inviteExpiry.toISOString() : null}
+          />
 
           <BakerForm action={boundUpdate} submitLabel="Save changes" defaultValues={baker} />
         </div>

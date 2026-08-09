@@ -17,6 +17,17 @@ services:
       PORT: 4000
       DATABASE_URL: ${DATABASE_URL}
       SESSION_SECRET: ${SESSION_SECRET}
+
+      # Baker invitations. OPS calls the CrossFriend backend to issue an activation token rather
+      # than writing one itself — that logic (hashing, revoking the previous invite, refusing an
+      # already-claimed bakery) must have exactly one implementation.
+      #   MEDUSA_BACKEND_URL  where to call
+      #   OPS_SERVICE_KEY     proves the caller is OPS; must match the backend's value
+      #   BAKER_PORTAL_URL    builds the activation link handed to the baker, so this must be the
+      #                       PUBLIC portal origin (https://baker.crossfriend.in), never localhost
+      MEDUSA_BACKEND_URL: ${MEDUSA_BACKEND_URL}
+      OPS_SERVICE_KEY: ${OPS_SERVICE_KEY}
+      BAKER_PORTAL_URL: ${BAKER_PORTAL_URL}
       GOOGLE_PLACES_API_KEY: ${GOOGLE_PLACES_API_KEY}
       S3_URL: ${S3_URL}
       S3_BUCKET: ${S3_BUCKET}
