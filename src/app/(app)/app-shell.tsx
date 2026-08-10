@@ -57,6 +57,7 @@ const NAV_GROUPS = [
     accent: "teal",
     items: [
       { href: "/rnd", label: "R&D", icon: "flask" },
+      { href: "/designs", label: "AI Designs", icon: "image" },
       { href: "/database", label: "Database", icon: "database" },
     ],
   },
@@ -111,6 +112,7 @@ const ICONS: Record<string, React.ReactNode> = {
   grid: <path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z" />,
   phone: <path d="M6.5 3h-2A1.5 1.5 0 0 0 3 4.5C3 11.4 8.6 17 15.5 17A1.5 1.5 0 0 0 17 15.5v-2l-3.5-1.5-1.5 2a11 11 0 0 1-4.5-4.5l2-1.5L6.5 3z" />,
   flask: <path d="M8 3v5L4 16a1 1 0 0 0 .9 1.5h10.2A1 1 0 0 0 16 16l-4-8V3M7 3h6M6.5 12h7" />,
+  image: <path d="M3 4.5h14v11H3zM3 13l4-4 3.5 3.5L13 10l4 4M7.5 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2" />,
   database: <path d="M10 3c3.9 0 7 1 7 2.2S13.9 7.5 10 7.5 3 6.5 3 5.2 6.1 3 10 3zM3 5.2v9.6C3 16.1 6.1 17 10 17s7-.9 7-2.2V5.2M3 10c0 1.3 3.1 2.2 7 2.2s7-.9 7-2.2" />,
   users: <path d="M13 16v-1.5a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3V16M7.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18 16v-1.5a3 3 0 0 0-2.2-2.9M13.5 3.7a3 3 0 0 1 0 5.8" />,
   help: (

@@ -11,6 +11,7 @@ export const HELP_PAGES = [
   { href: "/help/products", label: "Products", blurb: "Creation, publication, and reaching the marketplace" },
   { href: "/help/storefront", label: "Storefront", blurb: "What customers see and how they buy" },
   { href: "/help/operations", label: "Operations", blurb: "Daily tasks, setup, secrets, deployment" },
+  { href: "/help/seo", label: "Search & SEO", blurb: "Sitemap, robots, Search Console — getting found by Google and AI" },
   { href: "/help/troubleshooting", label: "Troubleshooting", blurb: "Symptoms, causes, where to look" },
   { href: "/help/reference", label: "Reference", blurb: "Routes, limits, environment, known gaps" },
 ] as const
