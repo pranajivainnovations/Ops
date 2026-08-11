@@ -23,6 +23,7 @@ interface Row {
   id: string
   image_url: string
   prompt: string
+  compiled_prompt: string | null
   style: string | null
   occasion: string | null
   flavor: string | null
@@ -60,7 +61,7 @@ export default async function DesignsPage({
 
   const [rows, totals] = await Promise.all([
     db.query<Row>(
-      `SELECT d.id, d.image_url, d.prompt, d.style, d.occasion, d.flavor,
+      `SELECT d.id, d.image_url, d.prompt, d.compiled_prompt, d.style, d.occasion, d.flavor,
               d.weight, d.tiers, d.customer_id, d.is_public, d.status, d.created_at,
               u.purpose AS reference_purpose
        FROM ai_studio.cake_designs d
@@ -182,7 +183,40 @@ export default async function DesignsPage({
                     )}
                   </div>
 
-                  <p className="line-clamp-3 text-xs leading-relaxed text-slate-700">{d.prompt}</p>
+                  {/*
+                    Two different prompts, and the distinction matters for moderation.
+
+                    `prompt` is what the customer typed — the thing to read when judging intent.
+                    `compiled_prompt` is what our elaborator turned it into and actually sent to the
+                    image model, which is where you look when the picture does not match the words,
+                    or when working out whether the pipeline added something the customer never asked
+                    for. Both are kept behind <details> so the grid stays scannable; <details> also
+                    means the full text is in the HTML for Ctrl-F even while collapsed.
+                  */}
+                  <details className="group/prompt">
+                    <summary className="cursor-pointer list-none">
+                      <span className="line-clamp-3 text-xs leading-relaxed text-slate-700">
+                        {d.prompt}
+                      </span>
+                      <span className="mt-0.5 inline-block text-[10px] font-semibold text-slate-400 group-open/prompt:hidden">
+                        Show full prompt
+                      </span>
+                    </summary>
+                    <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-700">
+                      {d.prompt}
+                    </p>
+                  </details>
+
+                  {d.compiled_prompt && (
+                    <details className="mt-1.5">
+                      <summary className="cursor-pointer list-none rounded bg-violet-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-violet-700 hover:bg-violet-100">
+                        AI prompt
+                      </summary>
+                      <p className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded bg-slate-900 p-2 text-[10px] leading-relaxed text-slate-100">
+                        {d.compiled_prompt}
+                      </p>
+                    </details>
+                  )}
 
                   <dl className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500">
                     {d.style && <span>{d.style}</span>}

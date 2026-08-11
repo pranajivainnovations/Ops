@@ -4,6 +4,7 @@ import { getDbPool } from "@/lib/db"
 import { onboardPincode, offboardPincode } from "../actions"
 import { onboardDiscovery, holdDiscovery, dismissDiscovery } from "../discovery-actions"
 import DiscoveryTrigger from "./discovery-trigger"
+import AddByLink from "./add-by-link"
 import BackLink from "../../_components/back-link"
 
 export const dynamic = "force-dynamic"
@@ -184,6 +185,10 @@ export default async function PincodeDetailPage({
           </p>
         </div>
         <DiscoveryTrigger pincode={pincode} lastSearchedAt={lastSearchedAt} />
+      </div>
+
+      <div className="mt-3">
+        <AddByLink pincode={pincode} />
       </div>
 
       {sortedDiscoveries.length === 0 ? (
