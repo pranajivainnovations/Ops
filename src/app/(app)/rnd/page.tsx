@@ -119,6 +119,9 @@ export default async function ResearchPage({
                       <th className="px-4 py-2">Pincode</th>
                       <th className="px-4 py-2">Rating</th>
                       <th className="px-4 py-2">Phone</th>
+                      <th className="px-4 py-2">Website</th>
+                      <th className="px-4 py-2">Status</th>
+                      <th className="px-4 py-2" />
                     </tr>
                   </thead>
                   <tbody>
@@ -133,6 +136,34 @@ export default async function ResearchPage({
                             : "—"}
                         </td>
                         <td className="px-4 py-2 text-slate-600">{(r.phone as string) || "—"}</td>
+                        {/* Whether a business already has a website changes how you approach them,
+                            so it reads Yes/No at a glance with the link behind the Yes. */}
+                        <td className="px-4 py-2">
+                          {r.website_url ? (
+                            <a
+                              href={r.website_url as string}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={r.website_url as string}
+                              className="font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 hover:text-emerald-900"
+                            >
+                              Yes
+                            </a>
+                          ) : (
+                            <span className="text-slate-400">No</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-slate-600">
+                          {(r.business_status as string) || "—"}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <Link
+                            href={`/rnd/results/${r.id as string}`}
+                            className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+                          >
+                            Details
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,5 +1,7 @@
+import Image from "next/image"
 import Link from "next/link"
 import { getDbPool } from "@/lib/db"
+import { setDesignVisibility } from "./actions"
 
 export const dynamic = "force-dynamic"
 
@@ -144,16 +146,19 @@ export default async function DesignsPage({
                 key={d.id}
                 className="overflow-hidden rounded-xl border border-slate-200 bg-white"
               >
-                {/* Plain <img>: these are S3 URLs on a host that is not in next.config's image
-                    allowlist, and a moderation screen that silently fails to render the thing being
-                    moderated is worse than an unoptimised image. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={d.image_url}
-                  alt={d.prompt?.slice(0, 80) || "AI generated cake design"}
-                  className="aspect-square w-full bg-slate-100 object-cover"
-                  loading="lazy"
-                />
+                {/* Resized and re-encoded by Next rather than served as the full-resolution S3
+                    original. `sizes` matters as much as the component here: without it every tile
+                    would request an image sized for the whole viewport, which is most of what made
+                    the unoptimised version expensive. */}
+                <div className="relative aspect-square w-full bg-slate-100">
+                  <Image
+                    src={d.image_url}
+                    alt={d.prompt?.slice(0, 80) || "AI generated cake design"}
+                    fill
+                    sizes="(min-width: 1280px) 22vw, (min-width: 1024px) 30vw, (min-width: 640px) 45vw, 90vw"
+                    className="object-cover"
+                  />
+                </div>
                 <div className="p-3">
                   <div className="mb-2 flex flex-wrap items-center gap-1.5">
                     <span
@@ -194,6 +199,28 @@ export default async function DesignsPage({
                       year: "numeric",
                     })}
                   </p>
+
+                  {/* A plain form post, so this works with no client JS and cannot end up in a
+                      half-toggled state on a flaky connection. The action re-reads the current value
+                      rather than trusting a hidden field, so a double submit is idempotent. */}
+                  <form
+                    action={async () => {
+                      "use server"
+                      await setDesignVisibility(d.id, !d.is_public)
+                    }}
+                    className="mt-2"
+                  >
+                    <button
+                      type="submit"
+                      className={`w-full rounded-lg px-2 py-1.5 text-[11px] font-semibold transition-colors ${
+                        d.is_public
+                          ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                          : "bg-emerald-600 text-white hover:bg-emerald-700"
+                      }`}
+                    >
+                      {d.is_public ? "Remove from gallery" : "Put in gallery"}
+                    </button>
+                  </form>
                 </div>
               </article>
             ))}
