@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import { getDbPool } from "@/lib/db"
 import { getCurrentSession } from "@/lib/auth"
+import { callBackend } from "@/lib/backend"
 
 function str(formData: FormData, key: string): string | null {
   const v = formData.get(key)
@@ -140,6 +141,15 @@ export async function updateBakerAction(id: string, formData: FormData) {
   if (!f.name) throw new Error("Name is required")
 
   const db = getDbPool()
+
+  // Read before writing: these two flags decide whether this bakery's products may be on sale, and
+  // only a change to them needs the backend to re-project the catalogue. Most saves touch neither.
+  const before = await db.query<{ is_active: boolean; is_public: boolean }>(
+    `SELECT is_active, is_public FROM baker_network.bakers WHERE id = $1`,
+    [id]
+  )
+  const prev = before.rows[0]
+
   await db.query(
     // Every value that's both assigned AND compared in a CASE (status, blue_tick, trust_badge)
     // is passed as two separate placeholders — Postgres can fail to unify a single reused
@@ -195,6 +205,26 @@ export async function updateBakerAction(id: string, formData: FormData) {
       id,
     ]
   )
+
+  // Saving the row is only half of switching a bakery on or off. `is_active` and `is_public` decide
+  // whether its products may be on sale, but nothing in this database can act on that: putting a
+  // product on or off sale means changing Medusa's product status and its sales channel membership,
+  // which has to go through Medusa's own services so hooks, events and search indexing fire.
+  //
+  // Failure is reported rather than swallowed, and the wording says what is still true — because the
+  // dangerous direction is the silent one. Un-ticking "visible publicly", being told "saved", and
+  // having the cakes stay on sale is precisely the bug this call exists to close.
+  if (prev && (prev.is_active !== f.is_active || prev.is_public !== f.is_public)) {
+    const { error } = await callBackend(`/ops/bakers/${id}/visibility`)
+    if (error) {
+      revalidatePath("/bakers")
+      redirect(
+        `/bakers/${id}?error=${encodeURIComponent(
+          `Saved — but this bakery's products were NOT updated on the storefront: ${error} Save again once the backend is reachable.`
+        )}`
+      )
+    }
+  }
 
   revalidatePath("/bakers")
   redirect("/bakers")

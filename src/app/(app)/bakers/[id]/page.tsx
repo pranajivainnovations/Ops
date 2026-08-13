@@ -8,6 +8,7 @@ import BakerImageUploader from "./baker-image-uploader"
 import BackLink from "../../_components/back-link"
 import BakerDetailTabs, { normalizeTab } from "./detail-tabs"
 import InvitePanel, { type ActivationState } from "./invite-panel"
+import ResetPanel from "./reset-panel"
 import BakerOverview from "./overview"
 import PipelinePanel from "./pipeline-panel"
 
@@ -60,7 +61,13 @@ export default async function BakerDetailPage({
                SELECT expires_at FROM baker_network.baker_activations
                 WHERE baker_id = $1 AND used_at IS NULL AND revoked_at IS NULL
                 ORDER BY created_at DESC LIMIT 1
-             ) AS live_invite_expires_at`,
+             ) AS live_invite_expires_at,
+             -- Only so the reset panel can say what it would actually delete. A count of "0
+             -- products" is the difference between a scary button and an obviously safe one.
+             (
+               SELECT COUNT(*)::INT FROM baker_network.baker_products
+                WHERE baker_id = $1
+             ) AS product_count`,
           [id]
         ),
       ])
@@ -69,6 +76,7 @@ export default async function BakerDetailPage({
   const images: BakerImageRow[] = imagesResult?.rows ?? []
   const claimed = activationResult?.rows[0]?.claimed ?? false
   const liveInviteExpiresAt = activationResult?.rows[0]?.live_invite_expires_at ?? null
+  const productCount: number = activationResult?.rows[0]?.product_count ?? 0
   const inviteExpiry: Date | null = liveInviteExpiresAt ? new Date(liveInviteExpiresAt) : null
 
   const activationState: ActivationState = claimed
@@ -190,6 +198,13 @@ export default async function BakerDetailPage({
               bakerId={id}
               state={activationState}
               expiresAt={inviteExpiry ? inviteExpiry.toISOString() : null}
+            />
+
+            <ResetPanel
+              bakerId={id}
+              bakerName={baker.name}
+              productCount={productCount}
+              isClaimed={claimed}
             />
 
             <BakerForm
