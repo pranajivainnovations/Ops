@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { getDbPool } from "@/lib/db"
 import ResearchTrigger from "./research-trigger"
+import WebsiteCell from "../_components/website-cell"
+import RecordCard, { CardList } from "../_components/record-card"
 
 export const dynamic = "force-dynamic"
 
@@ -110,7 +112,35 @@ export default async function ResearchPage({
                 No results stored yet for this search — click Search above to run it.
               </p>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <>
+              {/* Cards on phones. This screen exists to size up a market, and doing that from a
+                  name and a status alone is not possible. */}
+              <CardList>
+                {results.map((r) => (
+                  <RecordCard
+                    key={r.id as string}
+                    href={`/rnd/results/${r.id as string}`}
+                    linkLabel="Details"
+                    title={(r.display_name as string) || "Unnamed"}
+                    subtitle={(r.formatted_address as string) || "—"}
+                    fields={[
+                      { label: "Pincode", value: (r.postal_code as string) || "—" },
+                      {
+                        label: "Rating",
+                        value:
+                          r.rating != null
+                            ? `⭐ ${r.rating}${r.user_rating_count != null ? ` (${r.user_rating_count})` : ""}`
+                            : "—",
+                      },
+                      { label: "Phone", value: (r.phone as string) || "—" },
+                      { label: "Website", value: <WebsiteCell url={r.website_url as string | null} /> },
+                      { label: "Status", value: (r.business_status as string) || "—" },
+                    ]}
+                  />
+                ))}
+              </CardList>
+
+              <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white sm:block">
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                     <tr>
@@ -139,19 +169,7 @@ export default async function ResearchPage({
                         {/* Whether a business already has a website changes how you approach them,
                             so it reads Yes/No at a glance with the link behind the Yes. */}
                         <td className="px-4 py-2">
-                          {r.website_url ? (
-                            <a
-                              href={r.website_url as string}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={r.website_url as string}
-                              className="font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 hover:text-emerald-900"
-                            >
-                              Yes
-                            </a>
-                          ) : (
-                            <span className="text-slate-400">No</span>
-                          )}
+                          <WebsiteCell url={r.website_url as string | null} />
                         </td>
                         <td className="px-4 py-2 text-xs text-slate-600">
                           {(r.business_status as string) || "—"}
@@ -169,6 +187,7 @@ export default async function ResearchPage({
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </>
         ) : (

@@ -5,6 +5,7 @@ import { onboardPincode, offboardPincode } from "../actions"
 import { onboardDiscovery, holdDiscovery, dismissDiscovery } from "../discovery-actions"
 import DiscoveryTrigger from "./discovery-trigger"
 import AddByLink from "./add-by-link"
+import WebsiteCell from "../../_components/website-cell"
 import BackLink from "../../_components/back-link"
 
 export const dynamic = "force-dynamic"
@@ -235,16 +236,12 @@ export default async function PincodeDetailPage({
                         <span>⭐ {d.rating}{d.user_rating_count != null ? ` (${d.user_rating_count} reviews)` : ""}</span>
                       )}
                       {d.phone && <span>📞 {d.phone}</span>}
-                      {d.website_url && (
-                        <a
-                          href={d.website_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-slate-600 underline hover:text-slate-900"
-                        >
-                          Website
-                        </a>
-                      )}
+                      {/* Rendered unconditionally. Previously the link appeared only when a website
+                          existed, so a bakery without one looked identical to one nobody had
+                          checked — and "no website" is precisely the opening for an outreach call. */}
+                      <span>
+                        Website: <WebsiteCell url={d.website_url} />
+                      </span>
                     </div>
                   </div>
 

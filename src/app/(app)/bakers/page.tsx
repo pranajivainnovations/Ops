@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { getDbPool } from "@/lib/db"
 import BakerTabs from "./baker-tabs"
+import WebsiteCell from "../_components/website-cell"
+import RecordCard, { CardList } from "../_components/record-card"
 
 export const dynamic = "force-dynamic"
 
@@ -40,7 +42,50 @@ export default async function BakersPage() {
         {result.rows.length === 0 ? (
           <p className="text-sm text-slate-500">No bakers yet. Add the first one.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <>
+            {/* Phones get every field as a card. The table below hides 7 of its 10 columns at this
+                width, which left a baker showing as a name, a status and a link — not enough to
+                decide anything, and this team works from a phone. Same rows, both layouts. */}
+            <CardList>
+              {result.rows.map((b) => (
+                <RecordCard
+                  key={b.id}
+                  href={`/bakers/${b.id}`}
+                  title={b.name}
+                  subtitle={[b.city, b.state, b.pincode].filter(Boolean).join(", ") || "—"}
+                  fields={[
+                    { label: "Status", value: b.status },
+                    {
+                      label: "Rating",
+                      value:
+                        b.google_rating != null
+                          ? `⭐ ${b.google_rating}${b.google_review_count != null ? ` (${b.google_review_count})` : ""}`
+                          : "—",
+                    },
+                    { label: "Phone", value: b.phone || "—" },
+                    { label: "Website", value: <WebsiteCell url={b.website_url} /> },
+                    { label: "Confidence", value: b.confidence || "—" },
+                    {
+                      label: "Badges",
+                      value:
+                        [b.blue_tick && "Blue tick", b.trust_badge && "Trust"]
+                          .filter(Boolean)
+                          .join(" · ") || "—",
+                    },
+                    {
+                      label: "Active",
+                      value: b.is_active ? (
+                        <span className="font-semibold text-emerald-700">Yes</span>
+                      ) : (
+                        <span className="font-semibold text-slate-400">No</span>
+                      ),
+                    },
+                  ]}
+                />
+              ))}
+            </CardList>
+
+          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white sm:block">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
@@ -95,19 +140,7 @@ export default async function BakersPage() {
                         and the team should not have to open a record to find that out. Opens in a
                         new tab and carries noreferrer, since these are third-party sites. */}
                     <td className="hidden px-4 py-2 md:table-cell">
-                      {b.website_url ? (
-                        <a
-                          href={b.website_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-2 hover:text-emerald-900"
-                          title={b.website_url}
-                        >
-                          Yes
-                        </a>
-                      ) : (
-                        <span className="text-slate-400">No</span>
-                      )}
+                      <WebsiteCell url={b.website_url} />
                     </td>
                     <td className="px-4 py-2 text-slate-600">
                       <Link href={href} className={cell}>
@@ -164,6 +197,7 @@ export default async function BakersPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </main>

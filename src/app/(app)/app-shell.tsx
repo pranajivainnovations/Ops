@@ -39,6 +39,8 @@ const NAV_GROUPS = [
     label: "Network",
     accent: "violet",
     items: [
+      // First in the group: an order with a clock running outranks anything else on this screen.
+      { href: "/orders", label: "Orders", icon: "receipt" },
       { href: "/bakers", label: "Bakers", icon: "store" },
       { href: "/pincodes", label: "Pincodes", icon: "pin" },
     ],
@@ -105,6 +107,7 @@ const ACCENT: Record<Accent, { label: string; chip: string; activeChip: string; 
 }
 
 const ICONS: Record<string, React.ReactNode> = {
+  receipt: <path d="M5 2h10v16l-2.5-1.5L10 18l-2.5-1.5L5 18zM8 7h4M8 10h4" />,
   store: <path d="M3 7l1.5-3h11L17 7M3 7h14M3 7v9h14V7M7 16v-4h6v4" />,
   pin: <path d="M10 17s5-4.6 5-8a5 5 0 1 0-10 0c0 3.4 5 8 5 8zM10 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" />,
   tag: <path d="M3 9.5V4h5.5l8 8-5.5 5.5-8-8zM6.2 6.2h.01" />,

@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { getDbPool } from "@/lib/db"
 import BakerTabs from "../baker-tabs"
+import WebsiteCell from "../../_components/website-cell"
+import RecordCard, { CardList } from "../../_components/record-card"
 import { onboardDiscovery, holdDiscovery, dismissDiscovery } from "../../pincodes/discovery-actions"
 
 export const dynamic = "force-dynamic"
@@ -108,7 +110,35 @@ export default async function DiscoveriesPage({
         {rows.rows.length === 0 ? (
           <p className="text-sm text-slate-500">No discoveries match this filter.</p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <>
+            {/* Cards on phones — deciding whether to approach a bakery needs the rating, the phone
+                number and whether they already have a website, and the table hides all three at
+                this width. */}
+            <CardList>
+              {rows.rows.map((d) => (
+                <RecordCard
+                  key={d.id}
+                  href={`/bakers/discoveries/${d.id}`}
+                  title={d.display_name || "Unnamed"}
+                  subtitle={d.formatted_address || "—"}
+                  fields={[
+                    { label: "Pincode", value: d.postal_code || d.search_pincode || "—" },
+                    {
+                      label: "Rating",
+                      value:
+                        d.rating != null
+                          ? `⭐ ${d.rating}${d.user_rating_count != null ? ` (${d.user_rating_count})` : ""}`
+                          : "—",
+                    },
+                    { label: "Phone", value: d.phone || "—" },
+                    { label: "Website", value: <WebsiteCell url={d.website_url} /> },
+                    { label: "Status", value: d.review_status },
+                  ]}
+                />
+              ))}
+            </CardList>
+
+          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white sm:block">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
@@ -117,6 +147,10 @@ export default async function DiscoveriesPage({
                   <th className="hidden px-4 py-2 sm:table-cell">Pincode</th>
                   <th className="hidden px-4 py-2 sm:table-cell">Rating</th>
                   <th className="hidden px-4 py-2 md:table-cell">Phone</th>
+                  {/* Already selected by the query but never rendered until now — which made "no
+                      website" indistinguishable from "not looked at", the one thing that most
+                      changes how you approach a bakery. */}
+                  <th className="hidden px-4 py-2 sm:table-cell">Website</th>
                   <th className="px-4 py-2">Status</th>
                   <th className="px-4 py-2" />
                 </tr>
@@ -149,6 +183,9 @@ export default async function DiscoveriesPage({
                       {d.rating != null ? `⭐ ${d.rating}${d.user_rating_count != null ? ` (${d.user_rating_count})` : ""}` : "—"}
                     </td>
                     <td className="hidden px-4 py-2 text-slate-600 md:table-cell">{d.phone || "—"}</td>
+                    <td className="hidden px-4 py-2 sm:table-cell">
+                      <WebsiteCell url={d.website_url} />
+                    </td>
                     <td className="px-4 py-2">
                       <span
                         className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -217,12 +254,15 @@ export default async function DiscoveriesPage({
                 ))}
               </tbody>
             </table>
-            {rows.rows.length === 100 && (
-              <p className="px-4 py-2 text-[11px] text-slate-400">
-                Showing first 100 matches — refine your search or filter for more specific results.
-              </p>
-            )}
           </div>
+          {/* Outside the table wrapper so it shows on phones too — the card list would otherwise
+              end silently at 100 with no hint that there are more. */}
+          {rows.rows.length === 100 && (
+            <p className="px-1 py-2 text-[11px] text-slate-400">
+              Showing first 100 matches — refine your search or filter for more specific results.
+            </p>
+          )}
+          </>
         )}
       </div>
     </main>
