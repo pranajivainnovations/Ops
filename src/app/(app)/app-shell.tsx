@@ -6,22 +6,27 @@ import { usePathname } from "next/navigation"
 import { logoutAction } from "@/app/login/actions"
 
 /**
- * Sidebar, grouped by what the work IS rather than by which feature shipped when.
+ * Two brands, one console.
  *
- * The groups answer "what am I here to do today":
+ * OPS started as CrossFriend's tool and then acquired a second body of work — the Pranajiva Ayurveda
+ * knowledge base — that shares nothing with it: different products, different team, different source
+ * of truth. Folding those five screens into the CrossFriend sidebar made the nav dishonest, because
+ * "Documents" sitting under Insights implied it was about cakes.
+ *
+ * So the top-level switch is the brand, and everything below it belongs to exactly one. A person is
+ * always in one world at a time and can see which; nothing has to be labelled "(Pranajiva)" further
+ * down, because the answer is already at the top of the screen.
+ *
+ * Within a brand, groups answer "what am I here to do today":
  *   Network   — the supply side: who bakes for us and where we deliver
  *   Catalogue — the rules that decide what a custom cake costs and what it can be
  *   Insights  — research and raw data; read-mostly, used when something needs explaining
  *   Settings  — infrequent administration
  *
- * Ungrouped flat lists stop scanning well at about six items, and this is now eight. Grouping also
- * makes the odd one out obvious: Database is a diagnostic tool, not a daily task, and putting it
- * under Insights says so without needing a tooltip.
- *
- * The Handbook sits last and visually separated — it is the thing you reach for when something else
- * on this list has confused you, so it should be findable without competing for attention with the
- * work itself.
+ * The Handbook and Sign out sit below the divider and belong to neither brand — they are reference
+ * and session, not work.
  */
+
 /**
  * Colour carries the grouping, so the eye finds a section before it reads a word.
  *
@@ -30,50 +35,107 @@ import { logoutAction } from "@/app/login/actions"
  * never decoration and never status. Semantic colours (a red error, an amber warning) stay
  * unclaimed by navigation so they still mean something when they appear in the page.
  *
- * Hues are chosen to be distinguishable rather than pretty: violet, amber, teal, slate. They stay
- * apart for the common forms of colour-blindness, and the icon shape plus the label carry the
- * meaning regardless — colour is a shortcut here, not the information.
+ * Hues are chosen to be distinguishable rather than pretty: violet, amber, teal, emerald, slate.
+ * They stay apart for the common forms of colour-blindness, and the icon shape plus the label carry
+ * the meaning regardless — colour is a shortcut here, not the information.
  */
-const NAV_GROUPS = [
-  {
-    label: "Network",
-    accent: "violet",
-    items: [
-      // First in the group: an order with a clock running outranks anything else on this screen.
-      { href: "/orders", label: "Orders", icon: "receipt" },
-      { href: "/bakers", label: "Bakers", icon: "store" },
-      { href: "/pincodes", label: "Pincodes", icon: "pin" },
-    ],
-  },
-  {
-    label: "Catalogue",
-    accent: "amber",
-    items: [
-      { href: "/taxonomy", label: "Taxonomy", icon: "grid" },
-      { href: "/pricing", label: "Pricing", icon: "tag" },
-      { href: "/constraints", label: "Constraints", icon: "sliders" },
-    ],
-  },
-  {
-    label: "Insights",
-    accent: "teal",
-    items: [
-      { href: "/rnd", label: "R&D", icon: "flask" },
-      { href: "/designs", label: "AI Designs", icon: "image" },
-      { href: "/database", label: "Database", icon: "database" },
-    ],
-  },
-  {
-    label: "Settings",
-    accent: "slate",
-    items: [
-      { href: "/team", label: "Team", icon: "users" },
-      { href: "/settings", label: "Site details", icon: "phone" },
-    ],
-  },
-] as const
+type Accent = "violet" | "amber" | "teal" | "emerald" | "slate"
 
-type Accent = (typeof NAV_GROUPS)[number]["accent"]
+interface NavItem {
+  href: string
+  label: string
+  icon?: string
+  /**
+   * Highlight only on an exact path match. Needed for a section index like /pranajiva, which is a
+   * prefix of every other item in its own group and would otherwise be permanently active.
+   */
+  exact?: boolean
+}
+
+interface NavGroup {
+  label: string
+  accent: Accent
+  items: NavItem[]
+}
+
+interface Brand {
+  key: string
+  label: string
+  /** Where the switcher lands when you pick this brand. */
+  home: string
+  initials: string
+  /** Full class string — Tailwind cannot see an interpolated one. */
+  logo: string
+  groups: NavGroup[]
+}
+
+const BRANDS: Brand[] = [
+  {
+    key: "crossfriend",
+    label: "CrossFriend",
+    home: "/orders",
+    initials: "CF",
+    logo: "bg-gradient-to-br from-violet-500 to-fuchsia-500",
+    groups: [
+      {
+        label: "Network",
+        accent: "violet",
+        items: [
+          // First in the group: an order with a clock running outranks anything else on this screen.
+          { href: "/orders", label: "Orders", icon: "receipt" },
+          { href: "/bakers", label: "Bakers", icon: "store" },
+          { href: "/pincodes", label: "Pincodes", icon: "pin" },
+        ],
+      },
+      {
+        label: "Catalogue",
+        accent: "amber",
+        items: [
+          { href: "/taxonomy", label: "Taxonomy", icon: "grid" },
+          { href: "/pricing", label: "Pricing", icon: "tag" },
+          { href: "/constraints", label: "Constraints", icon: "sliders" },
+        ],
+      },
+      {
+        label: "Insights",
+        accent: "teal",
+        items: [
+          { href: "/rnd", label: "R&D", icon: "flask" },
+          { href: "/designs", label: "AI Designs", icon: "image" },
+          { href: "/database", label: "Database", icon: "database" },
+        ],
+      },
+      {
+        label: "Settings",
+        accent: "slate",
+        items: [
+          { href: "/team", label: "Team", icon: "users" },
+          { href: "/settings", label: "Site details", icon: "phone" },
+        ],
+      },
+    ],
+  },
+  {
+    key: "pranajiva",
+    label: "Pranajiva",
+    home: "/pranajiva",
+    initials: "PJ",
+    logo: "bg-gradient-to-br from-emerald-500 to-teal-600",
+    groups: [
+      {
+        label: "Knowledge base",
+        accent: "emerald",
+        items: [
+          { href: "/pranajiva", label: "Overview", icon: "leaf", exact: true },
+          { href: "/pranajiva/formulas", label: "Formulas", icon: "flask" },
+          { href: "/pranajiva/topics", label: "Content topics", icon: "docs" },
+          { href: "/pranajiva/products", label: "Product concepts", icon: "tag" },
+          { href: "/pranajiva/documents", label: "All documents", icon: "database" },
+        ],
+      },
+    ],
+  },
+]
 
 /**
  * Full class strings, never interpolated fragments — Tailwind scans source text, so
@@ -98,6 +160,12 @@ const ACCENT: Record<Accent, { label: string; chip: string; activeChip: string; 
     activeChip: "bg-teal-500 text-white",
     hover: "hover:bg-teal-50 hover:text-teal-900",
   },
+  emerald: {
+    label: "text-emerald-600",
+    chip: "bg-emerald-100 text-emerald-700",
+    activeChip: "bg-emerald-500 text-white",
+    hover: "hover:bg-emerald-50 hover:text-emerald-900",
+  },
   slate: {
     label: "text-slate-500",
     chip: "bg-slate-200 text-slate-600",
@@ -115,6 +183,8 @@ const ICONS: Record<string, React.ReactNode> = {
   grid: <path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z" />,
   phone: <path d="M6.5 3h-2A1.5 1.5 0 0 0 3 4.5C3 11.4 8.6 17 15.5 17A1.5 1.5 0 0 0 17 15.5v-2l-3.5-1.5-1.5 2a11 11 0 0 1-4.5-4.5l2-1.5L6.5 3z" />,
   flask: <path d="M8 3v5L4 16a1 1 0 0 0 .9 1.5h10.2A1 1 0 0 0 16 16l-4-8V3M7 3h6M6.5 12h7" />,
+  leaf: <path d="M4 16c0-6 4-10 12-11 1 8-3 12-9 12H4zM4 16c2-3 4-5 7-6.5" />,
+  docs: <path d="M11 2H6a1.5 1.5 0 0 0-1.5 1.5v13A1.5 1.5 0 0 0 6 18h8a1.5 1.5 0 0 0 1.5-1.5V6.5L11 2zM11 2v4.5h4.5M7.5 11h5M7.5 14h5" />,
   image: <path d="M3 4.5h14v11H3zM3 13l4-4 3.5 3.5L13 10l4 4M7.5 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2" />,
   database: <path d="M10 3c3.9 0 7 1 7 2.2S13.9 7.5 10 7.5 3 6.5 3 5.2 6.1 3 10 3zM3 5.2v9.6C3 16.1 6.1 17 10 17s7-.9 7-2.2V5.2M3 10c0 1.3 3.1 2.2 7 2.2s7-.9 7-2.2" />,
   users: <path d="M13 16v-1.5a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3V16M7.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18 16v-1.5a3 3 0 0 0-2.2-2.9M13.5 3.7a3 3 0 0 1 0 5.8" />,
@@ -144,7 +214,15 @@ function NavIcon({ name }: { name: string }) {
   )
 }
 
-const HELP_ITEM = { href: "/help", label: "Handbook", icon: "help" }
+const HELP_ITEM: NavItem = { href: "/help", label: "Handbook", icon: "help" }
+
+/** The brand a path belongs to. Anything not claimed by a brand's prefix is CrossFriend's. */
+function brandForPath(pathname: string): Brand {
+  const match = BRANDS.find(
+    (brand) => brand.key !== "crossfriend" && pathname.startsWith(`/${brand.key}`)
+  )
+  return match ?? BRANDS[0]
+}
 
 /**
  * One nav link.
@@ -158,12 +236,14 @@ function NavLink({
   onNavigate,
   accent,
 }: {
-  item: { href: string; label: string; icon?: string }
+  item: NavItem
   pathname: string
   onNavigate: () => void
   accent: Accent
 }) {
-  const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
+  const active = item.exact
+    ? pathname === item.href
+    : pathname === item.href || pathname.startsWith(`${item.href}/`)
   const a = ACCENT[accent]
 
   return (
@@ -189,15 +269,63 @@ function NavLink({
   )
 }
 
+/**
+ * The brand switch.
+ *
+ * Two tabs rather than a dropdown: there are two of them, and a dropdown would hide the fact that a
+ * second world exists behind a click. Each tab is a plain link to that brand's home, so switching is
+ * a normal navigation — no client state to get out of step with the URL, and a bookmarked Pranajiva
+ * page opens with Pranajiva selected because the path is what decides.
+ */
+function BrandSwitch({
+  active,
+  onNavigate,
+}: {
+  active: Brand
+  onNavigate: () => void
+}) {
+  return (
+    <div className="mx-3 mb-4 grid grid-cols-2 gap-1 rounded-xl bg-slate-200/70 p-1">
+      {BRANDS.map((brand) => {
+        const isActive = brand.key === active.key
+        return (
+          <Link
+            key={brand.key}
+            href={brand.home}
+            onClick={onNavigate}
+            aria-current={isActive ? "true" : undefined}
+            className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold transition ${
+              isActive
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-500 hover:bg-white/60 hover:text-slate-800"
+            }`}
+          >
+            <span
+              className={`flex h-4 w-4 items-center justify-center rounded text-[8px] font-bold text-white ${
+                isActive ? brand.logo : "bg-slate-400"
+              }`}
+            >
+              {brand.initials}
+            </span>
+            {brand.label}
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
+  const brand = brandForPath(pathname)
+  const close = () => setMobileOpen(false)
 
   return (
     <div className="flex min-h-screen flex-1 flex-col sm:flex-row">
       {/* Mobile top bar — hamburger only shows below the sm breakpoint */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:hidden">
-        <p className="text-sm font-bold text-slate-900">CrossFriend Ops</p>
+        <p className="text-sm font-bold text-slate-900">{brand.label} Ops</p>
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
@@ -214,7 +342,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/30 sm:hidden"
-          onClick={() => setMobileOpen(false)}
+          onClick={close}
           aria-hidden="true"
         />
       )}
@@ -229,17 +357,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       >
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-5">
           <div className="flex items-center gap-2">
-            {/* The one place the CrossFriend brand appears in an otherwise deliberately neutral
-                internal tool — enough to say whose system this is, not enough to compete with the
-                navigation colour below it. */}
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 text-xs font-bold text-white">
-              CF
+            <span
+              className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold text-white ${brand.logo}`}
+            >
+              {brand.initials}
             </span>
-            <p className="text-sm font-bold text-slate-900">CrossFriend Ops</p>
+            <p className="text-sm font-bold text-slate-900">{brand.label} Ops</p>
           </div>
           <button
             type="button"
-            onClick={() => setMobileOpen(false)}
+            onClick={close}
             aria-label="Close menu"
             className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 sm:hidden"
           >
@@ -248,8 +375,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </svg>
           </button>
         </div>
+
+        <BrandSwitch active={brand} onNavigate={close} />
+
         <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-2">
-          {NAV_GROUPS.map((group) => (
+          {brand.groups.map((group) => (
             <div key={group.label}>
               <p
                 className={`mb-1 px-2.5 text-[11px] font-semibold uppercase tracking-wider ${
@@ -265,7 +395,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     item={item}
                     pathname={pathname}
                     accent={group.accent}
-                    onNavigate={() => setMobileOpen(false)}
+                    onNavigate={close}
                   />
                 ))}
               </div>
@@ -273,14 +403,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        {/* Handbook and Sign out sit below the divider: reference and session, not work. */}
+        {/* Handbook and Sign out sit below the divider: reference and session, not work — and they
+            belong to the console rather than to either brand. */}
         <div className="space-y-0.5 border-t border-slate-200 p-3">
-          <NavLink
-            item={HELP_ITEM}
-            pathname={pathname}
-            accent="slate"
-            onNavigate={() => setMobileOpen(false)}
-          />
+          <NavLink item={HELP_ITEM} pathname={pathname} accent="slate" onNavigate={close} />
           <form action={logoutAction}>
             <button
               type="submit"

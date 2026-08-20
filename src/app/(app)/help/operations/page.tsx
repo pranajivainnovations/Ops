@@ -125,7 +125,7 @@ node scripts/seed-admin.js you@crossfriend.in "your password" "Your Name"`}</Cod
             head={["App", "Must be set"]}
             rows={[
               ["Backend", <Term key="a">DATABASE_URL, REDIS_URL, JWT_SECRET, COOKIE_SECRET, BAKER_SESSION_SECRET, OPS_SERVICE_KEY, S3_*</Term>],
-              ["OPS", <Term key="b">DATABASE_URL, SESSION_SECRET, OPS_SERVICE_KEY, MEDUSA_BACKEND_URL, BAKER_PORTAL_URL, S3_*, GOOGLE_PLACES_API_KEY</Term>],
+              ["OPS", <Term key="b">DATABASE_URL, SESSION_SECRET, OPS_SERVICE_KEY, MEDUSA_BACKEND_URL, BAKER_PORTAL_URL, S3_*, GOOGLE_PLACES_API_KEY, GOOGLE_DRIVE_*</Term>],
               ["Baker Portal", <Term key="c">MEDUSA_BACKEND_URL</Term>],
               ["Storefront", <Term key="d">MEDUSA_BACKEND_URL</Term>],
             ]}
