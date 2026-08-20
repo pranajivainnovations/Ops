@@ -1,8 +1,9 @@
+import Link from "next/link"
 import { notFound } from "next/navigation"
 
 import { coworkCommandsFor } from "@/lib/pranajiva/cowork"
 import { loadDecisions } from "@/lib/pranajiva/decisions"
-import { loadKnowledgeBase } from "@/lib/pranajiva/knowledge-base"
+import { loadKnowledgeBase, type TopicArtifact } from "@/lib/pranajiva/knowledge-base"
 import { splitTopicTypes } from "@/lib/pranajiva/parse"
 import BackLink from "../../../_components/back-link"
 import CopyField from "../../_components/copy-field"
@@ -33,6 +34,7 @@ export default async function TopicDetail({ params }: { params: Promise<{ key: s
   const decisions = await loadDecisions("topic")
   const decision = decisions.get(topic.key)
   const commands = coworkCommandsFor(topic.key)
+  const artifacts = kb.topicArtifacts.get(topic.key)
 
   /**
    * Columns this page does not model explicitly, shown as-is.
@@ -157,8 +159,8 @@ export default async function TopicDetail({ params }: { params: Promise<{ key: s
                   : null
               }
             />
-            <Row label="Evidence Pack" value={topic.evidencePack ?? "Not built yet"} />
-            <Row label="Article" value={topic.blog ?? "Not written yet"} />
+            <ArtifactRow label="Evidence Pack" artifact={artifacts?.evidencePack ?? null} missing="Not built yet" />
+            <ArtifactRow label="Article" artifact={artifacts?.article ?? null} missing="Not written yet" />
             {extra.map(([column, value]) => (
               <Row key={column} label={column} value={value} />
             ))}
@@ -166,6 +168,54 @@ export default async function TopicDetail({ params }: { params: Promise<{ key: s
         </section>
       </div>
     </main>
+  )
+}
+
+/**
+ * A produced file, linked into the OPS reader.
+ *
+ * Reads from Drive rather than from the index's `Evidence Pack Location` / `Blog Location` columns,
+ * which are empty on every row of master_index.csv — including this topic's, when both files exist.
+ * The stage is shown alongside the article because the folder it lives in is its editorial status.
+ */
+function ArtifactRow({
+  label,
+  artifact,
+  missing,
+}: {
+  label: string
+  artifact: TopicArtifact | null
+  missing: string
+}) {
+  return (
+    <div className="contents">
+      <dt className="text-xs font-semibold text-slate-500">{label}</dt>
+      <dd className="text-sm">
+        {artifact ? (
+          <span className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/pranajiva/documents/${artifact.id}`}
+              className="font-medium text-slate-900 underline underline-offset-2 hover:text-slate-600"
+            >
+              {artifact.name}
+            </Link>
+            <Chip tone="teal">{artifact.stage}</Chip>
+            {artifact.webViewLink && (
+              <a
+                href={artifact.webViewLink}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-700"
+              >
+                Drive ↗
+              </a>
+            )}
+          </span>
+        ) : (
+          <span className="text-slate-400">{missing}</span>
+        )}
+      </dd>
+    </div>
   )
 }
 

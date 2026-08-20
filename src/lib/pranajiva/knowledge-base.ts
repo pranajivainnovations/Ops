@@ -50,6 +50,24 @@ export interface PipelineSummary {
   lastActivity: string | null
 }
 
+export interface TopicArtifact {
+  id: string
+  name: string
+  /**
+   * The folder the file sits in. For an article this *is* its editorial stage — PIPELINE_STATUS is
+   * explicit that "blog status is expressed by FOLDER, not by a field: drafts → review → approved →
+   * published, moved with update_file(parentId)".
+   */
+  stage: string
+  webViewLink: string | null
+  modifiedTime: string | null
+}
+
+export interface TopicArtifacts {
+  evidencePack: TopicArtifact | null
+  article: TopicArtifact | null
+}
+
 export interface Gap {
   severity: "warning" | "info"
   title: string
@@ -66,6 +84,8 @@ export interface KnowledgeBase {
   formulas: ClassicalFormula[]
   products: ProductConcept[]
   topics: TopicIndex | null
+  /** Evidence Pack and article per topic, matched from Drive rather than read from the index. */
+  topicArtifacts: Map<string, TopicArtifacts>
   /** Documents whose absence or staleness the team should know about, computed not hardcoded. */
   gaps: Gap[]
   /** Which control documents were located, for honest "not found" states in the UI. */
@@ -202,6 +222,74 @@ function recountFromIndex(state: ContentPipelineState | null, topics: TopicIndex
     phase: state?.phase ?? null,
     lastUpdated: state?.lastUpdated ?? null,
   }
+}
+
+/**
+ * Match every topic to the files the pipeline has produced for it.
+ *
+ * ── Why match on the filename and not the index's own columns ───────────────────────────────────
+ * master_index.csv has `Evidence Pack Location` and `Blog Location` columns, and they are empty on
+ * all 432 rows — including PJ-C22-T13, whose Evidence Pack and article both demonstrably exist in
+ * Drive. Trusting those columns would tell the team no articles have been written while one sits in
+ * blogs/drafts. The files are the fact; the columns are a note someone has not made yet.
+ *
+ * The pipeline's naming convention is the join: `PJ-C{chapter}-T{topic}_{slug}.md`. The topic key is
+ * matched as a prefix followed by a separator, never bare — without that boundary `PJ-C1-T1` would
+ * also claim `PJ-C1-T13`'s files.
+ *
+ * Evidence Pack and article can carry the *identical* filename (PJ-C22-T13_murdha-taila.md is both),
+ * so they are told apart by the folder they are in, which is also what encodes an article's stage.
+ */
+function matchTopicArtifacts(tree: DriveTree, topics: TopicIndex | null): Map<string, TopicArtifacts> {
+  const byTopic = new Map<string, TopicArtifacts>()
+  if (!topics) return byTopic
+
+  const toArtifact = (doc: DriveDocument): TopicArtifact => ({
+    id: doc.id,
+    name: doc.name,
+    stage: doc.path[doc.path.length - 1] ?? "root",
+    webViewLink: doc.webViewLink,
+    modifiedTime: doc.modifiedTime,
+  })
+
+  for (const topic of topics.topics) {
+    const matches = tree.documents.filter((doc) => {
+      if (!doc.name.startsWith(topic.key)) return false
+      const next = doc.name.charAt(topic.key.length)
+      return next === "" || next === "_" || next === "-" || next === "." || next === " "
+    })
+
+    if (matches.length === 0) continue
+
+    const inFolder = (needle: string) =>
+      matches.find((doc) => doc.path.some((segment) => segment.toLowerCase() === needle))
+
+    byTopic.set(topic.key, {
+      evidencePack: (inFolder("evidence_packs") && toArtifact(inFolder("evidence_packs")!)) || null,
+      // Any file under a `blogs` folder is the article, whichever stage subfolder it has reached.
+      article:
+        (() => {
+          const doc = matches.find((d) => d.path.some((s) => s.toLowerCase() === "blogs"))
+          return doc ? toArtifact(doc) : null
+        })() || null,
+    })
+  }
+
+  return byTopic
+}
+
+/**
+ * Editorial stages in the order the pipeline moves work through them.
+ *
+ * Used only to sort and order what is displayed. Stages are discovered from the folders that
+ * actually exist — a stage not in this list still shows, it just sorts last, so renaming or adding
+ * a folder in Drive cannot make an article disappear from the screen.
+ */
+const STAGE_ORDER = ["drafts", "review", "approved", "published"]
+
+export function stageRank(stage: string): number {
+  const index = STAGE_ORDER.indexOf(stage.toLowerCase())
+  return index === -1 ? STAGE_ORDER.length : index
 }
 
 /**
@@ -391,6 +479,7 @@ export async function loadKnowledgeBase(): Promise<KnowledgeBase> {
     formulas: formulaText ? parseFormulaLibrary(formulaText) : [],
     products,
     topics,
+    topicArtifacts: matchTopicArtifacts(tree, topics),
     gaps: findGaps(tree, masterIndexText, products, topics, content),
     found,
   }

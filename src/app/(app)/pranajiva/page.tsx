@@ -3,7 +3,12 @@ import Link from "next/link"
 import { GoogleDriveError, driveConfig, isDriveConfigured } from "@/lib/google-drive"
 import { countDecisions, decisionsSchemaReady } from "@/lib/pranajiva/decisions"
 import { classifyProductStatus } from "@/lib/pranajiva/parse"
-import { loadKnowledgeBase, type Gap, type KnowledgeBase } from "@/lib/pranajiva/knowledge-base"
+import {
+  loadKnowledgeBase,
+  stageRank,
+  type Gap,
+  type KnowledgeBase,
+} from "@/lib/pranajiva/knowledge-base"
 import { SectionHeader, StatCard } from "./_components/section"
 import { DriveErrorPanel, MigrationPendingPanel, SetupPanel } from "./_components/setup"
 import { relativeTime } from "./format"
@@ -150,6 +155,8 @@ export default async function PranajivaOverview() {
         </section>
       )}
 
+      <EditorialPanel kb={kb} />
+
       {kb.content && <ContentPipelinePanel state={kb.content} />}
 
       <section>
@@ -247,6 +254,76 @@ function GapList({ gaps }: { gaps: Gap[] }) {
           )}
         </div>
       ))}
+    </section>
+  )
+}
+
+/**
+ * Articles the pipeline has actually produced, grouped by the folder they sit in.
+ *
+ * Counted from files in Drive rather than from the topic index, whose Blog Location column is empty
+ * on every row — an article exists today and the index does not know about it. The folder is the
+ * status, so moving a file from drafts to review in Drive moves it here with no other change.
+ *
+ * Renders nothing when no article has been written yet, rather than a row of zeros: an empty
+ * editorial pipeline is already said by "0 blogs" in the content panel below.
+ */
+function EditorialPanel({ kb }: { kb: KnowledgeBase }) {
+  const articles = Array.from(kb.topicArtifacts.entries())
+    .map(([topicKey, artifacts]) => ({ topicKey, article: artifacts.article }))
+    .filter((entry): entry is { topicKey: string; article: NonNullable<typeof entry.article> } =>
+      Boolean(entry.article)
+    )
+
+  if (articles.length === 0) return null
+
+  const byStage = new Map<string, typeof articles>()
+  for (const entry of articles) {
+    const list = byStage.get(entry.article.stage) ?? []
+    list.push(entry)
+    byStage.set(entry.article.stage, list)
+  }
+
+  const stages = Array.from(byStage.entries()).sort(
+    ([a], [b]) => stageRank(a) - stageRank(b) || a.localeCompare(b)
+  )
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">
+        Articles written ({articles.length})
+      </h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Grouped by the folder each one sits in — that is how the pipeline records editorial stage.
+      </p>
+
+      <div className="mt-3 space-y-3">
+        {stages.map(([stage, entries]) => (
+          <div key={stage}>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+              {stage} ({entries.length})
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {entries.map((entry) => (
+                <li key={entry.article.id} className="text-xs">
+                  <Link
+                    href={`/pranajiva/documents/${entry.article.id}`}
+                    className="text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                  >
+                    {entry.article.name}
+                  </Link>
+                  <Link
+                    href={`/pranajiva/topics/${encodeURIComponent(entry.topicKey)}`}
+                    className="ml-2 font-mono text-[10px] text-slate-400 hover:text-slate-600"
+                  >
+                    {entry.topicKey}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
     </section>
   )
 }

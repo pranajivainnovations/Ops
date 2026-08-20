@@ -2,7 +2,11 @@ import Link from "next/link"
 
 import { GoogleDriveError, isDriveConfigured } from "@/lib/google-drive"
 import { loadDecisions } from "@/lib/pranajiva/decisions"
-import { loadKnowledgeBase, type KnowledgeBase } from "@/lib/pranajiva/knowledge-base"
+import {
+  loadKnowledgeBase,
+  type KnowledgeBase,
+  type TopicArtifacts,
+} from "@/lib/pranajiva/knowledge-base"
 import { splitTopicTypes, type TopicRow } from "@/lib/pranajiva/parse"
 import { DecisionControl } from "../_components/decision"
 import { EmptyRow, SectionHeader, StatCard } from "../_components/section"
@@ -247,22 +251,9 @@ export default async function TopicsPage({
                 <td className="px-4 py-2 text-xs text-slate-600">{topic.priority ?? "—"}</td>
                 <td className="px-4 py-2 text-xs">
                   <p className="text-slate-600">{topic.status ?? "—"}</p>
-                  {/* Presence of the artefacts, not just the declared status — the two can disagree,
-                      and the overview raises it as a gap when they do. */}
-                  {(topic.evidencePack || topic.blog) && (
-                    <p className="mt-0.5 flex flex-wrap gap-1">
-                      {topic.evidencePack && (
-                        <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">
-                          pack
-                        </span>
-                      )}
-                      {topic.blog && (
-                        <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
-                          blog
-                        </span>
-                      )}
-                    </p>
-                  )}
+                  {/* Files found in Drive, not the index's own columns — those are empty on every
+                      row even where an article exists. Both open in the OPS reader. */}
+                  <ArtifactLinks artifacts={kb.topicArtifacts.get(topic.key)} />
                 </td>
                 <td className="px-4 py-2">
                   <DecisionControl
@@ -304,6 +295,40 @@ export default async function TopicsPage({
         </nav>
       )}
     </Shell>
+  )
+}
+
+/**
+ * The Evidence Pack and article, if the pipeline has produced them.
+ *
+ * Linked into the OPS reader rather than out to Drive: the whole point of the section is that the
+ * team can read what the pipelines wrote without leaving the tool or holding a Google account each.
+ * The article's chip is labelled with its stage, because the folder it sits in is its status.
+ */
+function ArtifactLinks({ artifacts }: { artifacts: TopicArtifacts | undefined }) {
+  if (!artifacts?.evidencePack && !artifacts?.article) return null
+
+  return (
+    <p className="mt-1 flex flex-wrap gap-1">
+      {artifacts.evidencePack && (
+        <Link
+          href={`/pranajiva/documents/${artifacts.evidencePack.id}`}
+          className="rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800 hover:bg-teal-200"
+          title={artifacts.evidencePack.name}
+        >
+          Evidence Pack
+        </Link>
+      )}
+      {artifacts.article && (
+        <Link
+          href={`/pranajiva/documents/${artifacts.article.id}`}
+          className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 hover:bg-emerald-200"
+          title={artifacts.article.name}
+        >
+          Article · {artifacts.article.stage}
+        </Link>
+      )}
+    </p>
   )
 }
 
