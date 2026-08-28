@@ -200,7 +200,17 @@ function visibleWordCount(html: string): number {
 }
 
 /** The pages sampled by the on-page checks. One of each template that matters for ranking. */
-const SAMPLE_PAGES = ["/", "/store", "/occasions/birthday", "/bakers", "/cake-size-calculator"]
+const SAMPLE_PAGES = [
+  "/",
+  "/store",
+  "/occasions/birthday",
+  "/occasions/anniversary",
+  "/collections",
+  "/categories",
+  "/ready-to-order",
+  "/bakers",
+  "/cake-size-calculator",
+]
 
 /**
  * AI crawlers whose access is worth asserting explicitly.
@@ -564,12 +574,38 @@ export const CHECKS: Check[] = [
     group: "schema",
     why: "The highest-leverage AEO markup there is: an explicit question paired with a short answer is exactly the shape an answer engine lifts.",
     run: async (ctx) => {
-      const paths = ["/", "/cake-size-calculator", "/occasions/birthday"]
+      /**
+       * Every page that carries an FAQ, not a convenience sample.
+       *
+       * An earlier version of this check sampled three pages and stopped at the first hit. None of
+       * the three was /bakers, so it reported FAQ markup as missing while twenty-one Question
+       * entities were live across the site — and an external audit independently reached the same
+       * wrong conclusion. A check that samples has to say what it sampled, or it produces confident
+       * false negatives; this one reports every page and the question count on each.
+       */
+      const paths = ["/bakers", "/ai-cake-studio", "/cake-size-calculator", "/occasions/birthday"]
+      const rows: string[] = []
+      let total = 0
+
       for (const path of paths) {
         const doc = await ctx.get(path)
-        if (schemaTypes(doc.body).has("FAQPage")) return { status: "pass", detail: `Present on ${path}` }
+        if (!schemaTypes(doc.body).has("FAQPage")) {
+          rows.push(`${path.padEnd(24)} —`)
+          continue
+        }
+        const questions = (doc.body.match(/"@type"\s*:\s*\\?"Question\\?"/g) ?? []).length
+        total += questions
+        rows.push(`${path.padEnd(24)} FAQPage, ${questions} questions`)
       }
-      return { status: "fail", detail: `Not on any of: ${paths.join(", ")}` }
+
+      const evidence = rows.join("\n")
+      if (total === 0) return { status: "fail", detail: "No FAQPage markup anywhere", evidence }
+      const covered = rows.filter((r) => r.includes("FAQPage")).length
+      return {
+        status: "pass",
+        detail: `${total} questions across ${covered} of ${paths.length} pages checked`,
+        evidence,
+      }
     },
   },
   {
