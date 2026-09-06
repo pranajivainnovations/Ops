@@ -113,6 +113,8 @@ const BRANDS: Brand[] = [
         items: [
           { href: "/team", label: "Team", icon: "users" },
           { href: "/settings", label: "Site details", icon: "phone" },
+          { href: "/messaging", label: "Messaging", icon: "message", exact: true },
+          { href: "/messaging/checklist", label: "SMS rollout", icon: "check" },
         ],
       },
     ],
@@ -191,6 +193,8 @@ const ICONS: Record<string, React.ReactNode> = {
   database: <path d="M10 3c3.9 0 7 1 7 2.2S13.9 7.5 10 7.5 3 6.5 3 5.2 6.1 3 10 3zM3 5.2v9.6C3 16.1 6.1 17 10 17s7-.9 7-2.2V5.2M3 10c0 1.3 3.1 2.2 7 2.2s7-.9 7-2.2" />,
   users: <path d="M13 16v-1.5a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3V16M7.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18 16v-1.5a3 3 0 0 0-2.2-2.9M13.5 3.7a3 3 0 0 1 0 5.8" />,
   search: <path d="M9 15.5a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM13.8 13.8 17.5 17.5" />,
+  message: <path d="M3 5.5A1.5 1.5 0 0 1 4.5 4h11A1.5 1.5 0 0 1 17 5.5v7a1.5 1.5 0 0 1-1.5 1.5H8l-4 3v-3A1.5 1.5 0 0 1 3 12.5zM6.5 9h7" />,
+  check: <path d="M6.5 4h7A1.5 1.5 0 0 1 15 5.5v11A1.5 1.5 0 0 1 13.5 18h-7A1.5 1.5 0 0 1 5 16.5v-11A1.5 1.5 0 0 1 6.5 4zM8 2.5h4v3H8zM7.5 10l1.75 1.75L13 8" />,
   rocket: <path d="M10 2c3 1.8 4.5 4.7 4.5 8L10 14l-4.5-4c0-3.3 1.5-6.2 4.5-8zM10 8.2a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4zM6.8 13.4 5 17l3.6-1.8M13.2 13.4 15 17l-3.6-1.8" />,
   help: (
     <>
