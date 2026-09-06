@@ -307,13 +307,34 @@ export const CHECKS: Check[] = [
       const locs = (doc.body.match(/<loc>[^<]*<\/loc>/g) ?? []).map((l) => l.replace(/<\/?loc>/g, ""))
       const products = locs.filter((l) => l.includes("/products/"))
       const bakers = locs.filter((l) => /\/bakers\/[^/]+$/.test(l))
+      const designs = locs.filter((l) => l.includes("/ai-cake-studio/gallery/"))
 
-      const detail = `${products.length} products, ${bakers.length} bakers, ${locs.length} URLs total`
-      if (products.length < 10) {
-        return { status: "fail", detail, evidence: products.join("\n") || "(no product URLs in sitemap)" }
-      }
-      if (products.length < 50) return { status: "warn", detail }
-      return { status: "pass", detail }
+      /**
+       * Design pages are counted, but separately, and they do not lift the verdict.
+       *
+       * They are genuinely indexable and each carries a distinct long-tail phrase, so reporting
+       * only the product count would understate the site. But they cannot be bought: a visitor
+       * arriving on one has seen a picture, not a thing with a price. Rolling them into the
+       * product number would let this check go green while the catalogue is still one cake, which
+       * is precisely the failure it exists to catch.
+       */
+      const detail =
+        `${products.length} products, ${bakers.length} bakers` +
+        (designs.length ? `, ${designs.length} design pages` : "") +
+        `, ${locs.length} URLs total`
+
+      const evidence = [
+        `products:     ${products.length}`,
+        `bakers:       ${bakers.length}`,
+        `design pages: ${designs.length}`,
+        `other:        ${locs.length - products.length - bakers.length - designs.length}`,
+        "",
+        ...products.slice(0, 20),
+      ].join("\n")
+
+      if (products.length < 10) return { status: "fail", detail, evidence }
+      if (products.length < 50) return { status: "warn", detail, evidence }
+      return { status: "pass", detail, evidence }
     },
   },
   {
