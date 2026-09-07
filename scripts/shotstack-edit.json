@@ -1,0 +1,30 @@
+{
+  "timeline": {
+    "background": "#0f172a",
+    "tracks": [
+      {
+        "clips": [
+          {
+            "asset": {
+              "type": "title",
+              "text": "Pranajiva",
+              "style": "minimal",
+              "color": "#ffffff",
+              "size": "large"
+            },
+            "start": 0,
+            "length": 3,
+            "transition": {
+              "in": "fade",
+              "out": "fade"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "output": {
+    "format": "mp4",
+    "resolution": "sd"
+  }
+}

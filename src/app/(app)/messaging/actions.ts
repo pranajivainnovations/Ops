@@ -53,17 +53,17 @@ export async function saveTemplate(formData: FormData) {
   if (!dltTemplateId) fail("The DLT template ID is required.")
 
   /**
-   * The OTP placeholder is checked against the variable name the backend actually sends.
+   * The body is reference material now, not configuration — so it is no longer validated.
    *
-   * MSG91 maps flow variables by name and does not error on a mismatch — it substitutes an empty
-   * string and delivers "Your verification code is ." to the customer. That failure is invisible
-   * from every dashboard, so the check belongs at the point the template is registered.
+   * This check used to require a literal `##otp##`, because the old Flow API implementation
+   * supplied the variable itself and a name mismatch would have delivered a message with the digits
+   * missing. Under SendOTP that cannot happen: MSG91 generates the code and substitutes it into its
+   * own template, and nothing we send names a variable at all.
+   *
+   * Worth recording that the check was also wrong while it existed: `.includes("##otp##")` is
+   * case-sensitive, and the approved template reads `##OTP##`. It would have rejected the real
+   * text at the moment someone tried to save it.
    */
-  if (bodyPreview && !bodyPreview.includes("##otp##") && !bodyPreview.toLowerCase().includes("{{otp}}")) {
-    fail(
-      "The message body must contain the OTP placeholder — the backend sends the variable named 'otp'. Use ##otp## as registered with DLT."
-    )
-  }
 
   const db = getDbPool()
 

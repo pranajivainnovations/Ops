@@ -1,4 +1,5 @@
 import { deleteTemplate, saveFlow, saveTemplate } from "./actions"
+import TestPanel from "./test-panel"
 import { FLOW_LIMITS, getFlows, getTemplates } from "./data"
 
 export const dynamic = "force-dynamic"
@@ -319,6 +320,8 @@ export default async function MessagingPage({
             </details>
           </div>
         </section>
+
+        <TestPanel />
       </div>
     </main>
   )
