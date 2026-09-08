@@ -114,6 +114,7 @@ const BRANDS: Brand[] = [
           { href: "/team", label: "Team", icon: "users" },
           { href: "/settings", label: "Site details", icon: "phone" },
           { href: "/messaging", label: "Messaging", icon: "message", exact: true },
+          { href: "/messaging/attempts", label: "Sign-in attempts", icon: "receipt" },
           { href: "/messaging/checklist", label: "SMS rollout", icon: "check" },
         ],
       },
