@@ -12,6 +12,7 @@ import {
   type BoardMessage,
   type TeamMember,
 } from "./data"
+import Composer from "./composer"
 import EnableNotifications from "./enable-notifications"
 import MessageBody from "./message-body"
 import ScrollToLatest from "./scroll-to-latest"
@@ -103,10 +104,19 @@ export default async function BoardPage({
 
   return (
     <Shell view={view} openCount={openTasks.length} composer={<Composer team={team} canAttach={hasAttachments} />}>
+      {/* Dismissible, because the message lives in the URL: without a way out it reappears on every
+          reload and on anyone opening the same link, long after the mis-tap that caused it. */}
       {params.error && (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
-          {params.error}
-        </p>
+        <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+          <span className="min-w-0 flex-1">{params.error}</span>
+          <Link
+            href={view === "tasks" ? "/board?view=tasks" : "/board"}
+            aria-label="Dismiss"
+            className="shrink-0 rounded px-1.5 text-red-400 transition hover:text-red-700"
+          >
+            ✕
+          </Link>
+        </div>
       )}
 
       {pushReady && <EnableNotifications publicKey={vapidPublicKey} />}
@@ -127,7 +137,7 @@ export default async function BoardPage({
           /* A new day gets a divider. Without one a board read weeks later is a wall of "14:32" with
              no idea whether two messages are minutes or months apart. */
           const newDay =
-            !previous || previous.createdAt.toDateString() !== message.createdAt.toDateString()
+            !previous || istDayKey(previous.createdAt) !== istDayKey(message.createdAt)
 
           /* Consecutive messages from the same person inside five minutes are one turn of speech, so
              only the first carries an avatar and a name. Repeating them makes a person typing three
@@ -181,15 +191,18 @@ function Shell({
        up. Subtracting it is what keeps the composer on screen rather than just below it on a phone.
        100dvh, not 100vh, so the browser chrome collapsing does not leave the box under the URL bar. */
     <main className="flex h-[calc(100dvh-3.25rem)] flex-1 flex-col bg-slate-50 sm:h-[100dvh]">
-      <header className="shrink-0 border-b border-slate-200 bg-white px-6 py-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+      <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-2.5 small:px-6 small:py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
             <h1 className="text-base font-bold text-slate-900">Team board</h1>
-            <p className="mt-0.5 text-xs text-slate-500">
+            {/* Desktop only. It explains the page to someone seeing it for the first time, which is
+                worth a line on a screen with room and not worth 40px of a phone's thread — the
+                people reading it on a phone have used the board before. */}
+            <p className="mt-0.5 hidden text-xs text-slate-500 small:block">
               One thread for the whole team. Anything written here can be marked as a task.
             </p>
           </div>
-          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
             <Tab href="/board" active={view === "all"}>
               Everything
             </Tab>
@@ -207,12 +220,14 @@ function Shell({
 
       {/* min-h-0 is load-bearing: without it a flex child refuses to shrink below its content and
           the pane grows instead of scrolling, pushing the composer off the bottom of the screen. */}
-      <div id={THREAD_ID} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+      <div id={THREAD_ID} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 small:space-y-4 small:px-6 small:py-5">
         {children}
       </div>
 
       {composer && (
-        <div className="shrink-0 border-t border-slate-200 bg-white px-6 py-4">{composer}</div>
+        <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-3 small:px-6 small:py-4">
+          {composer}
+        </div>
       )}
     </main>
   )
@@ -230,7 +245,7 @@ function Tab({
   return (
     <Link
       href={href}
-      className={`inline-flex items-center rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+      className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold transition small:px-3 small:py-1.5 ${
         active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
       }`}
     >
@@ -267,14 +282,26 @@ function MessageRow({
 
   if (grouped) {
     return (
-      <article className={`rounded-xl border border-transparent bg-white px-4 pb-2 pt-0 ${isMine ? "border-l-2 border-l-violet-300" : ""}`}>
-        <div className="pl-8">
-          {message.body && (
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800">
-              <MessageBody text={message.body} />
-            </p>
-          )}
-          <Attachments message={message} />
+      <article className={`rounded-xl border border-transparent bg-white px-3 pb-1.5 pt-0 small:px-4 small:pb-2 ${isMine ? "border-l-2 border-l-violet-300" : ""}`}>
+        <div className="flex items-end gap-2 pl-8">
+          <div className="min-w-0 flex-1">
+            {message.body && (
+              <p className="whitespace-pre-wrap break-words text-[15px] font-medium leading-snug text-slate-900">
+                <MessageBody text={message.body} />
+              </p>
+            )}
+            <Attachments message={message} />
+          </div>
+          {/* The clock time, on every message in a run.
+              The first message of a run carries "29m ago" in its header and the rest carried nothing,
+              so five messages sent one after another were indistinguishable in time — which is
+              exactly the case that matters when you are working out whether something sent twice. */}
+          <time
+            className="shrink-0 pb-0.5 text-[10px] tabular-nums text-slate-400"
+            dateTime={message.createdAt.toISOString()}
+          >
+            {formatClock(message.createdAt)}
+          </time>
         </div>
       </article>
     )
@@ -282,7 +309,7 @@ function MessageRow({
 
   return (
     <article
-      className={`mt-2 rounded-xl border bg-white p-4 ${isMine ? "border-l-2 border-l-violet-400" : ""} ${
+      className={`mt-1.5 rounded-xl border bg-white p-3 small:mt-2 small:p-4 ${isMine ? "border-l-2 border-l-violet-400" : ""} ${
         message.isTask && !message.isDone
           ? overdue
             ? "border-red-300 bg-red-50/40"
@@ -299,8 +326,15 @@ function MessageRow({
         <span className="text-xs font-bold text-slate-900">
           {isMine ? "You" : message.authorName}
         </span>
-        <time className="text-[11px] text-slate-400" dateTime={message.createdAt.toISOString()}>
-          {formatWhen(message.createdAt)}
+        {/* Relative here, absolute in the tooltip and on every message below it. "5h ago" answers
+            "is this still live"; the clock answers "when exactly" — different questions, and the
+            board needs both. */}
+        <time
+          className="text-[11px] text-slate-400"
+          dateTime={message.createdAt.toISOString()}
+          title={message.createdAt.toLocaleString("en-IN", { timeZone: IST })}
+        >
+          {formatWhen(message.createdAt)} · {formatClock(message.createdAt)}
         </time>
         {message.isTask && (
           <span
@@ -318,11 +352,16 @@ function MessageRow({
       </div>
 
       {/* whitespace-pre-wrap, so a message written with line breaks keeps them. Not Markdown — this
-          is a chat box, and half-rendered formatting is worse than none. */}
+          is a chat box, and half-rendered formatting is worse than none.
+
+          15px and medium, not 14px and regular: the thread is scanned rather than read — you are
+          looking for the one line that concerns you, past a dozen that do not. Weight is what
+          separates the message from the metadata around it. At the same weight as the timestamps and
+          the buttons, everything competes equally and nothing is findable. */}
       {message.body && (
         <p
-          className={`mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed ${
-            message.isDone ? "text-slate-400 line-through" : "text-slate-800"
+          className={`mt-1 whitespace-pre-wrap break-words text-[15px] leading-snug ${
+            message.isDone ? "font-normal text-slate-400 line-through" : "font-medium text-slate-900"
           }`}
         >
           <MessageBody text={message.body} muted={message.isDone} />
@@ -480,70 +519,6 @@ function Attachments({ message }: { message: BoardMessage }) {
     </div>
   )
 }
-
-function Composer({ team, canAttach }: { team: TeamMember[]; canAttach: boolean }) {
-  return (
-    /* multipart, or the file never leaves the browser — a server action reads a plain urlencoded
-       form fine, and the image would silently arrive as a filename string. */
-    <form
-      action={postMessage}
-      encType="multipart/form-data"
-      className="rounded-2xl border-2 border-slate-300 bg-white p-3"
-    >
-      <textarea
-        name="body"
-        rows={3}
-        maxLength={4000}
-        placeholder="Write to the team… paste a link and it will preview"
-        className="w-full resize-none border-0 bg-transparent p-1 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
-      />
-      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
-        {canAttach && (
-          /* A plain file input styled as a button. No preview thumbnail, which would mean making the
-             whole composer a client component to show something the file picker already showed. */
-          <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50">
-            <span aria-hidden="true">📎</span>
-            Photo
-            <input
-              type="file"
-              name="image"
-              accept="image/jpeg,image/png,image/webp"
-              className="sr-only"
-            />
-          </label>
-        )}
-        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-          <input type="checkbox" name="is_task" className="h-3.5 w-3.5 accent-amber-500" />
-          It&rsquo;s a task
-        </label>
-        <select
-          name="assignee_id"
-          defaultValue=""
-          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
-        >
-          <option value="">Anyone</option>
-          {team.map((member) => (
-            <option key={member.id} value={member.id}>
-              {member.name}
-            </option>
-          ))}
-        </select>
-        <input
-          type="date"
-          name="due_on"
-          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
-        />
-        <button
-          type="submit"
-          className="ml-auto rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-slate-700"
-        >
-          Post
-        </button>
-      </div>
-    </form>
-  )
-}
-
 /**
  * Initials on a coloured disc, the colour derived from the person rather than their position.
  *
@@ -590,16 +565,21 @@ function Avatar({ name, seed }: { name: string; seed: string }) {
 
 /** Today, Yesterday, or the date — a board read weeks later needs to know which. */
 function DayDivider({ date }: { date: Date }) {
-  const today = new Date().toDateString()
-  const yesterday = new Date(Date.now() - 86400000).toDateString()
-  const day = date.toDateString()
+  const today = istDayKey(new Date())
+  const yesterday = istDayKey(new Date(Date.now() - 86400000))
+  const day = istDayKey(date)
 
   const label =
     day === today
       ? "Today"
       : day === yesterday
         ? "Yesterday"
-        : date.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })
+        : date.toLocaleDateString("en-IN", {
+            timeZone: IST,
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })
 
   return (
     <div className="my-4 flex items-center gap-3">
@@ -610,6 +590,43 @@ function DayDivider({ date }: { date: Date }) {
   )
 }
 
+/**
+ * Every time on this page is rendered in India time, explicitly.
+ *
+ * These are server components, and the server runs in UTC. Left to the default, "sent at 02:11"
+ * would mean 07:41 to the person reading it and the day dividers would turn over at half past five
+ * in the morning — a board that quietly disagrees with the clock on the phone holding it. The same
+ * mistake scheduled an announcement five and a half hours late last week; it is the default that is
+ * wrong here, so the zone is named at every call rather than assumed at any of them.
+ */
+const IST = "Asia/Kolkata"
+
+/** 24-hour clock, so 09:05 and 21:05 cannot be confused at a glance the way "9:05" can. */
+function formatClock(date: Date): string {
+  return date.toLocaleTimeString("en-IN", {
+    timeZone: IST,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+}
+
+/**
+ * The calendar day a moment falls on, in India — "2026-09-10".
+ *
+ * toDateString() would answer in the server's zone, which is what makes a message sent at 11pm IST
+ * appear under tomorrow's divider. en-CA is used because it formats as ISO, so the strings compare
+ * and sort correctly as text.
+ */
+function istDayKey(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: IST,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date)
+}
+
 /** Times on a board are read as "when, relative to now" far more often than as a date. */
 function formatWhen(date: Date): string {
   const minutes = Math.round((Date.now() - date.getTime()) / 60000)
@@ -618,6 +635,7 @@ function formatWhen(date: Date): string {
   const hours = Math.round(minutes / 60)
   if (hours < 24) return `${hours}h ago`
   return date.toLocaleString("en-IN", {
+    timeZone: IST,
     day: "2-digit",
     month: "short",
     hour: "2-digit",

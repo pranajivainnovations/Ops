@@ -19,7 +19,28 @@ import { removeSubscription, saveSubscription } from "./push-actions"
  * trusting anything stored, so what it says is what is true.
  */
 
-type State = "checking" | "unsupported" | "blocked" | "off" | "on" | "working"
+type State = "checking" | "unsupported" | "insecure" | "needs-install" | "blocked" | "off" | "on" | "working"
+
+/**
+ * iPhones and iPads, including an iPad reporting itself as a Mac.
+ *
+ * Every browser on iOS is Safari underneath, so this is a platform test rather than a browser one —
+ * Chrome on an iPhone has exactly the same limitation and would be missed by looking for "Safari".
+ */
+function isApplePhoneOrTablet(): boolean {
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  )
+}
+
+/** Opened from the Home Screen rather than in a browser tab. */
+function isStandalone(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
+  )
+}
 
 /** VAPID keys travel as base64url; PushManager wants raw bytes. */
 /* Returns an ArrayBuffer rather than a Uint8Array: TypeScript types applicationServerKey as
@@ -42,13 +63,27 @@ export default function EnableNotifications({ publicKey }: { publicKey: string |
     let cancelled = false
 
     const read = async () => {
+      if (typeof window === "undefined") return
+
+      /**
+       * When notifications are unavailable, say which of the three reasons it is.
+       *
+       * "This browser cannot show notifications" was true and useless: two of the three causes are
+       * things the person can fix in under a minute, and the message sent them away believing it was
+       * impossible. On iOS in particular the API is simply absent in a normal tab and appears once
+       * the page is on the Home Screen — the same browser, a different answer.
+       */
       if (
-        typeof window === "undefined" ||
         !("serviceWorker" in navigator) ||
         !("PushManager" in window) ||
         !("Notification" in window)
       ) {
-        if (!cancelled) setState("unsupported")
+        if (cancelled) return
+        // Service workers exist only in a secure context, so http is indistinguishable from an old
+        // browser unless it is checked first.
+        if (!window.isSecureContext) setState("insecure")
+        else if (isApplePhoneOrTablet() && !isStandalone()) setState("needs-install")
+        else setState("unsupported")
         return
       }
       if (Notification.permission === "denied") {
@@ -143,7 +178,28 @@ export default function EnableNotifications({ publicKey }: { publicKey: string |
   if (state === "unsupported") {
     return (
       <Row tone="muted">
-        This browser cannot show notifications. The unread count still works everywhere.
+        This browser cannot show notifications. The unread count beside Team board still works
+        everywhere.
+      </Row>
+    )
+  }
+
+  if (state === "insecure") {
+    return (
+      <Row tone="muted">
+        Notifications need a secure connection. Open this page over <strong>https</strong> and
+        reload.
+      </Row>
+    )
+  }
+
+  if (state === "needs-install") {
+    return (
+      <Row tone="muted">
+        {/* Not a limitation of this app: iOS exposes the push API only to a web app launched from
+            the Home Screen, so there is nothing to click here until that is done. */}
+        On iPhone and iPad, add this page to your Home Screen first — <strong>Share</strong> →{" "}
+        <strong>Add to Home Screen</strong> — then open it from there and press Enable.
       </Row>
     )
   }
