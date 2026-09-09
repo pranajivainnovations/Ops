@@ -19,6 +19,7 @@ import {
   type DriveDocument,
   type DriveTree,
 } from "@/lib/google-drive"
+import { parseLedger, type Ledger } from "./ledger"
 import {
   classifyProductStatus,
   parseContentPipeline,
@@ -35,10 +36,32 @@ import {
 /** The name patterns that identify each control document. Order matters only within a pattern. */
 const CONTROL_DOCUMENTS = {
   masterIndex: /master[_ ]?project[_ ]?index/i,
+  ledger: /pipeline[_ ]?ledger/i,
   contentStatus: /pipeline[_ ]?status/i,
   formulaLibrary: /classical[_ ]?formula[_ ]?library/i,
   productPortfolio: /pranajiva[_ ]?products/i,
 } as const
+
+/**
+ * Retired documents, excluded from every read.
+ *
+ * The pipelines retire a document by moving it to `99_ARCHIVE` and prefixing the name with
+ * `ARCHIVED_{date}_`, keeping the original name in the middle so it stays findable. That convention
+ * is precisely what broke the overview: `PIPELINE_STATUS` still matches inside
+ * `ARCHIVED_2026-09-06_PIPELINE_STATUS_md_superseded-by-PIPELINE_LEDGER.md`, so three superseded
+ * status documents kept feeding the content panel after they were replaced by PIPELINE_LEDGER.
+ *
+ * Both halves of the convention are checked. Either alone would be enough today, and neither is
+ * guaranteed to stay that way — a file dragged into the archive folder without a rename is still
+ * archived, and a renamed file that has not been moved yet is too.
+ */
+const ARCHIVE_FOLDER = /^99[_-]?ARCHIVE$/i
+
+function isArchived(doc: { name: string; pipeline: string | null; path: string[] }): boolean {
+  if (/^ARCHIVED[_-]/i.test(doc.name)) return true
+  if (doc.pipeline && ARCHIVE_FOLDER.test(doc.pipeline)) return true
+  return doc.path.some((segment) => ARCHIVE_FOLDER.test(segment))
+}
 
 export interface PipelineSummary {
   id: string
@@ -50,22 +73,52 @@ export interface PipelineSummary {
   lastActivity: string | null
 }
 
+/** The languages the pipeline writes in since 2026-09-08. Null means a file written before that. */
+export type ArtifactLanguage = "EN" | "HI"
+
 export interface TopicArtifact {
   id: string
   name: string
   /**
-   * The folder the file sits in. For an article this *is* its editorial stage — PIPELINE_STATUS is
-   * explicit that "blog status is expressed by FOLDER, not by a field: drafts → review → approved →
-   * published, moved with update_file(parentId)".
+   * The folder the file sits in. For a blog or a video pack this *is* its editorial stage — the
+   * ledger is explicit that "stage is also structural: a file's folder IS its stage. Where the two
+   * disagree, the folder wins".
    */
   stage: string
+  /**
+   * Read from the `_EN` / `_HI` suffix in the filename.
+   *
+   * Null is meaningful rather than unknown: the ledger records that "files with no language suffix
+   * are pre-2026-09-08 and are in the retired scholarly format". An unsuffixed blog is therefore not
+   * an English blog that forgot its label — it is a blog awaiting rewrite, and the screens say so.
+   */
+  language: ArtifactLanguage | null
   webViewLink: string | null
   modifiedTime: string | null
 }
 
 export interface TopicArtifacts {
   evidencePack: TopicArtifact | null
-  article: TopicArtifact | null
+  blogEn: TopicArtifact | null
+  blogHi: TopicArtifact | null
+  /** A blog from before the bilingual split — no language suffix, retired scholarly format. */
+  blogLegacy: TopicArtifact | null
+  /** Reel packs from P05. One per language under the current standard; older runs produced one. */
+  videoPacks: TopicArtifact[]
+  /** The `_VO.json` and `_EDIT.json` render files that ship alongside a pack. */
+  renderFiles: TopicArtifact[]
+}
+
+/** True when the topic has anything at all — used to keep empty topics off the production board. */
+export function hasArtifacts(artifacts: TopicArtifacts): boolean {
+  return Boolean(
+    artifacts.evidencePack ||
+      artifacts.blogEn ||
+      artifacts.blogHi ||
+      artifacts.blogLegacy ||
+      artifacts.videoPacks.length ||
+      artifacts.renderFiles.length
+  )
 }
 
 export interface Gap {
@@ -84,8 +137,10 @@ export interface KnowledgeBase {
   formulas: ClassicalFormula[]
   products: ProductConcept[]
   topics: TopicIndex | null
-  /** Evidence Pack and article per topic, matched from Drive rather than read from the index. */
+  /** Evidence pack, both blogs and the video packs per topic, matched from Drive. */
   topicArtifacts: Map<string, TopicArtifacts>
+  /** The pipeline's own per-topic record. Null when PIPELINE_LEDGER.md cannot be read. */
+  ledger: Ledger | null
   /** Documents whose absence or staleness the team should know about, computed not hardcoded. */
   gaps: Gap[]
   /** Which control documents were located, for honest "not found" states in the UI. */
@@ -239,6 +294,18 @@ function recountFromIndex(state: ContentPipelineState | null, topics: TopicIndex
  *
  * Evidence Pack and article can carry the *identical* filename (PJ-C22-T13_murdha-taila.md is both),
  * so they are told apart by the folder they are in, which is also what encodes an article's stage.
+ *
+ * ── Two conventions this had to learn ──────────────────────────────────────────────────────────
+ * **Video packs use a different prefix.** P05 files are named `PJV-C01-T05_…` — `PJV` for PranaJiva
+ * Video, chosen so a blog and its pack sort together. A plain `startsWith(topic.key)` therefore
+ * matches none of them: `PJV-C01-T05…` does not begin with `PJ-C01-T05`. Every reel pack the
+ * pipeline has produced would have been invisible here. The key is normalised before comparing.
+ *
+ * **Blogs come in two languages.** Since 2026-09-08 the pipeline writes `_EN.md` and `_HI.md` from
+ * the same evidence pack, natively rather than in translation. A file with no suffix is not English —
+ * it is the retired pre-bilingual format, and the ledger tracks six of them as awaiting rewrite. It
+ * gets its own slot so the screens can say "awaiting rewrite" instead of quietly showing it as the
+ * English blog and making a topic look finished when half its work is outstanding.
  */
 function matchTopicArtifacts(tree: DriveTree, topics: TopicIndex | null): Map<string, TopicArtifacts> {
   const byTopic = new Map<string, TopicArtifacts>()
@@ -248,34 +315,64 @@ function matchTopicArtifacts(tree: DriveTree, topics: TopicIndex | null): Map<st
     id: doc.id,
     name: doc.name,
     stage: doc.path[doc.path.length - 1] ?? "root",
+    language: languageOf(doc.name),
     webViewLink: doc.webViewLink,
     modifiedTime: doc.modifiedTime,
   })
 
+  /**
+   * Only files that are actually part of the pipeline's output.
+   *
+   * Archived work keeps its topic-key prefix — `ARCHIVED_2026-09-08_PJ-C01-T05_scholarly-format_…`
+   * sits in 99_ARCHIVE — but is filtered by name before the key is even read, and the archive folder
+   * is excluded regardless.
+   */
+  const live = tree.documents.filter((doc) => !isArchived(doc))
+
   for (const topic of topics.topics) {
-    const matches = tree.documents.filter((doc) => {
-      if (!doc.name.startsWith(topic.key)) return false
-      const next = doc.name.charAt(topic.key.length)
+    const matches = live.filter((doc) => {
+      // PJV-C01-T05_… is PJ-C01-T05's video pack. Normalise before the prefix test, or every pack
+      // in P05 goes unmatched.
+      const name = doc.name.replace(/^PJV-/i, "PJ-")
+      if (!name.startsWith(topic.key)) return false
+      const next = name.charAt(topic.key.length)
       return next === "" || next === "_" || next === "-" || next === "." || next === " "
     })
 
     if (matches.length === 0) continue
 
-    const inFolder = (needle: string) =>
-      matches.find((doc) => doc.path.some((segment) => segment.toLowerCase() === needle))
+    const under = (needle: string) =>
+      matches.filter((doc) => doc.path.some((segment) => segment.toLowerCase() === needle))
+
+    const blogs = under("blogs").map(toArtifact)
+    // The render files sit beside the pack in scripts/*; they are handoff material for the editor,
+    // not scripts, and listing them as packs would triple the apparent output.
+    const scripts = under("scripts").map(toArtifact)
+    const isRenderFile = (a: TopicArtifact) => /_(vo|edit)\.json$/i.test(a.name)
 
     byTopic.set(topic.key, {
-      evidencePack: (inFolder("evidence_packs") && toArtifact(inFolder("evidence_packs")!)) || null,
-      // Any file under a `blogs` folder is the article, whichever stage subfolder it has reached.
-      article:
-        (() => {
-          const doc = matches.find((d) => d.path.some((s) => s.toLowerCase() === "blogs"))
-          return doc ? toArtifact(doc) : null
-        })() || null,
+      evidencePack: under("evidence_packs").map(toArtifact)[0] ?? null,
+      blogEn: blogs.find((b) => b.language === "EN") ?? null,
+      blogHi: blogs.find((b) => b.language === "HI") ?? null,
+      blogLegacy: blogs.find((b) => b.language === null) ?? null,
+      videoPacks: scripts.filter((a) => !isRenderFile(a)),
+      renderFiles: scripts.filter(isRenderFile),
     })
   }
 
   return byTopic
+}
+
+/**
+ * The language suffix in a filename, or null for a file written before the split.
+ *
+ * Matched as a whole underscore-delimited token so a slug can contain the letters without being
+ * misread — `_EN_PACK.md`, `_HI.md` and `_EN.md` all resolve, while a topic slugged
+ * `…_hi-matra.md` does not.
+ */
+function languageOf(name: string): ArtifactLanguage | null {
+  const match = /_(EN|HI)(?=[_.]|$)/i.exec(name.replace(/\.[a-z0-9]+$/i, "."))
+  return match ? (match[1].toUpperCase() as ArtifactLanguage) : null
 }
 
 /**
@@ -305,7 +402,8 @@ function findGaps(
   masterIndexText: string | null,
   products: ProductConcept[],
   topics: TopicIndex | null,
-  content: ContentPipelineState | null
+  content: ContentPipelineState | null,
+  topicArtifacts: Map<string, TopicArtifacts>
 ): Gap[] {
   const gaps: Gap[] = []
   const topicsReachable = topics !== null
@@ -381,7 +479,58 @@ function findGaps(
     }
   }
 
-  /* 4. The topic-level state that OPS cannot reach. */
+  /**
+   * 4. Blogs still in the retired pre-bilingual format.
+   *
+   * Since 2026-09-08 every blog is written twice, English and Hindi, natively from the same evidence
+   * pack. A blog with no language suffix predates that and is queued for a rewrite — the pipeline
+   * will not touch it without an explicit `overwrite EN`, so it sits there indefinitely and nothing
+   * else in Drive says it is waiting.
+   *
+   * Counted from the files, so it drops to zero on its own as each one is rewritten.
+   */
+  const legacyBlogs = Array.from(topicArtifacts.entries()).filter(
+    ([, artifacts]) => artifacts.blogLegacy && !artifacts.blogEn
+  )
+  if (legacyBlogs.length > 0) {
+    gaps.push({
+      severity: "info",
+      title: `${legacyBlogs.length} blog${legacyBlogs.length === 1 ? " is" : "s are"} still in the pre-bilingual format`,
+      detail: `${legacyBlogs
+        .map(([key]) => key)
+        .join(", ")} — written before the English/Hindi split and in the retired scholarly format, with no Hindi version. The pipeline will not replace them on its own: each needs an explicit "overwrite EN" to be rewritten to the current standard.`,
+      href: "/pranajiva/content",
+      hrefLabel: "Open the production board",
+    })
+  }
+
+  /**
+   * 5. Approved blogs with no reel pack.
+   *
+   * P05 reads from P02 and is bounded by blog production, not by topics — so a blog that has reached
+   * approved with no pack behind it is the pipeline's actual bottleneck, and it is invisible unless
+   * the two pipelines are compared. Drafts are excluded deliberately: a pack built from a draft has
+   * to be re-verified if the blog text then changes, which the video spec calls out.
+   */
+  const packableBlogs = Array.from(topicArtifacts.entries()).filter(([, a]) => {
+    const blog = a.blogEn ?? a.blogHi
+    return blog && stageRank(blog.stage) > stageRank("drafts") && a.videoPacks.length === 0
+  })
+  if (packableBlogs.length > 0) {
+    gaps.push({
+      severity: "info",
+      title: `${packableBlogs.length} approved blog${packableBlogs.length === 1 ? "" : "s"} with no reel pack`,
+      detail: `${packableBlogs
+        .map(([key]) => key)
+        .join(", ")} — past drafts in P02 with nothing built on top in P05. Say "reels for ${
+        packableBlogs[0][0]
+      }" to start one.`,
+      href: "/pranajiva/content",
+      hrefLabel: "Open the production board",
+    })
+  }
+
+  /* 6. The topic-level state that OPS cannot reach. */
   if (!topicsReachable) {
     gaps.push({
       severity: "info",
@@ -403,11 +552,16 @@ function findGaps(
 export async function loadKnowledgeBase(): Promise<KnowledgeBase> {
   const tree = await getDriveTree()
 
+  // Archived documents are excluded from every lookup below. They keep their original name inside
+  // the `ARCHIVED_{date}_…` prefix, so a pattern written for the live document still matches them.
+  const liveDocuments = tree.documents.filter((doc) => !isArchived(doc))
+
   const locate = (pattern: RegExp): DriveDocument | null =>
-    tree.documents.find((doc) => pattern.test(doc.name)) ?? null
+    liveDocuments.find((doc) => pattern.test(doc.name)) ?? null
 
   const found = {
     masterIndex: locate(CONTROL_DOCUMENTS.masterIndex),
+    ledger: locate(CONTROL_DOCUMENTS.ledger),
     contentStatus: locate(CONTROL_DOCUMENTS.contentStatus),
     formulaLibrary: locate(CONTROL_DOCUMENTS.formulaLibrary),
     productPortfolio: locate(CONTROL_DOCUMENTS.productPortfolio),
@@ -424,26 +578,35 @@ export async function loadKnowledgeBase(): Promise<KnowledgeBase> {
   })
 
   /**
-   * Every status document, not just the newest — see mergeContentState for why. Ordered newest
-   * first so the merge's "first non-empty wins" rule means "most recent that actually says
+   * Every *live* status document, not just the newest — see mergeContentState for why. Ordered
+   * newest first so the merge's "first non-empty wins" rule means "most recent that actually says
    * something".
+   *
+   * As of 2026-09-06 this list is empty: all three PIPELINE_STATUS documents were retired into
+   * 99_ARCHIVE in favour of PIPELINE_LEDGER, and archived documents no longer qualify. The merge
+   * handles an empty list by returning null, and the content panel falls back to recounting from the
+   * topic index — which is what it should have been doing anyway. The path stays here because a
+   * pipeline is free to publish a status document again.
    */
-  const statusDocuments = tree.documents.filter((doc) =>
+  const statusDocuments = liveDocuments.filter((doc) =>
     CONTROL_DOCUMENTS.contentStatus.test(doc.name)
   )
 
-  const [masterIndexText, statusTexts, formulaText, productText, topicFiles] = await Promise.all([
-    readDocument(found.masterIndex),
-    Promise.all(statusDocuments.map(readDocument)),
-    readDocument(found.formulaLibrary),
-    readDocument(found.productPortfolio),
-    topicFilePromise,
-  ])
+  const [masterIndexText, ledgerText, statusTexts, formulaText, productText, topicFiles] =
+    await Promise.all([
+      readDocument(found.masterIndex),
+      readDocument(found.ledger),
+      Promise.all(statusDocuments.map(readDocument)),
+      readDocument(found.formulaLibrary),
+      readDocument(found.productPortfolio),
+      topicFilePromise,
+    ])
 
   const topicText = await readDocument(topicFiles[0] ?? null)
 
   const products = productText ? parseProductPortfolio(productText) : []
   const topics = topicText ? parseTopicIndex(topicText) : null
+  const ledger = ledgerText ? parseLedger(ledgerText) : null
 
   const publishedState = mergeContentState(
     statusTexts.filter((text): text is string => Boolean(text)).map(parseContentPipeline)
@@ -472,6 +635,8 @@ export async function loadKnowledgeBase(): Promise<KnowledgeBase> {
     })
     .sort((a, b) => a.name.localeCompare(b.name))
 
+  const topicArtifacts = matchTopicArtifacts(tree, topics)
+
   return {
     tree,
     pipelines,
@@ -479,8 +644,9 @@ export async function loadKnowledgeBase(): Promise<KnowledgeBase> {
     formulas: formulaText ? parseFormulaLibrary(formulaText) : [],
     products,
     topics,
-    topicArtifacts: matchTopicArtifacts(tree, topics),
-    gaps: findGaps(tree, masterIndexText, products, topics, content),
+    topicArtifacts,
+    ledger,
+    gaps: findGaps(tree, masterIndexText, products, topics, content, topicArtifacts),
     found,
   }
 }

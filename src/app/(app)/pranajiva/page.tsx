@@ -4,8 +4,8 @@ import { GoogleDriveError, driveConfig, isDriveConfigured } from "@/lib/google-d
 import { countDecisions, decisionsSchemaReady } from "@/lib/pranajiva/decisions"
 import { classifyProductStatus } from "@/lib/pranajiva/parse"
 import {
+  hasArtifacts,
   loadKnowledgeBase,
-  stageRank,
   type Gap,
   type KnowledgeBase,
 } from "@/lib/pranajiva/knowledge-base"
@@ -259,72 +259,104 @@ function GapList({ gaps }: { gaps: Gap[] }) {
 }
 
 /**
- * Articles the pipeline has actually produced, grouped by the folder they sit in.
+ * What the content pipeline has actually produced, per topic.
+ *
+ * ── Why this is no longer a list of articles ───────────────────────────────────────────────────
+ * It used to group one "article" per topic by the folder it sat in. That shape stopped describing
+ * the work on 2026-09-08, when the pipeline started writing every blog twice — English and Hindi,
+ * each written natively from the same evidence pack — and P05 began building reel packs on top of
+ * them. A single article slot cannot express "English exists but in the retired format, Hindi is
+ * current, no pack yet", which is the actual state of PJ-C08-T01 and the thing worth acting on.
+ *
+ * So this is a completeness strip rather than a file list: one row per topic, four things that
+ * either exist or do not. The filenames moved to the production board, where there is room for them.
  *
  * Counted from files in Drive rather than from the topic index, whose Blog Location column is empty
- * on every row — an article exists today and the index does not know about it. The folder is the
- * status, so moving a file from drafts to review in Drive moves it here with no other change.
- *
- * Renders nothing when no article has been written yet, rather than a row of zeros: an empty
- * editorial pipeline is already said by "0 blogs" in the content panel below.
+ * on every row while the blogs demonstrably exist. Renders nothing until something is produced.
  */
 function EditorialPanel({ kb }: { kb: KnowledgeBase }) {
-  const articles = Array.from(kb.topicArtifacts.entries())
-    .map(([topicKey, artifacts]) => ({ topicKey, article: artifacts.article }))
-    .filter((entry): entry is { topicKey: string; article: NonNullable<typeof entry.article> } =>
-      Boolean(entry.article)
-    )
+  const rows = Array.from(kb.topicArtifacts.entries())
+    .filter(([, artifacts]) => hasArtifacts(artifacts))
+    .map(([topicKey, artifacts]) => ({
+      topicKey,
+      artifacts,
+      title: kb.topics?.topics.find((t) => t.key === topicKey)?.title ?? topicKey,
+    }))
+    .sort((a, b) => a.topicKey.localeCompare(b.topicKey))
 
-  if (articles.length === 0) return null
+  if (rows.length === 0) return null
 
-  const byStage = new Map<string, typeof articles>()
-  for (const entry of articles) {
-    const list = byStage.get(entry.article.stage) ?? []
-    list.push(entry)
-    byStage.set(entry.article.stage, list)
+  const totals = {
+    evidence: rows.filter((r) => r.artifacts.evidencePack).length,
+    en: rows.filter((r) => r.artifacts.blogEn).length,
+    hi: rows.filter((r) => r.artifacts.blogHi).length,
+    packs: rows.reduce((sum, r) => sum + r.artifacts.videoPacks.length, 0),
   }
-
-  const stages = Array.from(byStage.entries()).sort(
-    ([a], [b]) => stageRank(a) - stageRank(b) || a.localeCompare(b)
-  )
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4">
-      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">
-        Articles written ({articles.length})
-      </h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">
+          In production ({rows.length})
+        </h2>
+        <Link
+          href="/pranajiva/content"
+          className="text-xs font-semibold text-slate-500 underline underline-offset-2 hover:text-slate-900"
+        >
+          Open the production board →
+        </Link>
+      </div>
       <p className="mt-1 text-xs text-slate-500">
-        Grouped by the folder each one sits in — that is how the pipeline records editorial stage.
+        {totals.evidence} evidence pack{totals.evidence === 1 ? "" : "s"} · {totals.en} English blog
+        {totals.en === 1 ? "" : "s"} · {totals.hi} Hindi · {totals.packs} reel pack
+        {totals.packs === 1 ? "" : "s"}
       </p>
 
-      <div className="mt-3 space-y-3">
-        {stages.map(([stage, entries]) => (
-          <div key={stage}>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-              {stage} ({entries.length})
-            </p>
-            <ul className="mt-1 space-y-0.5">
-              {entries.map((entry) => (
-                <li key={entry.article.id} className="text-xs">
-                  <Link
-                    href={`/pranajiva/documents/${entry.article.id}`}
-                    className="text-slate-700 underline underline-offset-2 hover:text-slate-900"
-                  >
-                    {entry.article.name}
-                  </Link>
-                  <Link
-                    href={`/pranajiva/topics/${encodeURIComponent(entry.topicKey)}`}
-                    className="ml-2 font-mono text-[10px] text-slate-400 hover:text-slate-600"
-                  >
-                    {entry.topicKey}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+      <ul className="mt-3 space-y-1.5">
+        {rows.map((row) => (
+          <li key={row.topicKey} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Link
+              href={`/pranajiva/topics/${encodeURIComponent(row.topicKey)}`}
+              className="text-xs text-slate-700 underline underline-offset-2 hover:text-slate-900"
+            >
+              {row.title}
+            </Link>
+            <span className="font-mono text-[10px] text-slate-400">{row.topicKey}</span>
+            <span className="flex flex-wrap items-center gap-1">
+              <Pip label="Evidence" on={Boolean(row.artifacts.evidencePack)} />
+              {/* An unsuffixed blog is the retired scholarly format awaiting an explicit
+                  `overwrite EN`, so it is neither written nor missing — it is a third state, and
+                  flattening it into either one hides work that is queued. */}
+              <Pip
+                label="EN"
+                on={Boolean(row.artifacts.blogEn)}
+                pending={!row.artifacts.blogEn && Boolean(row.artifacts.blogLegacy)}
+              />
+              <Pip label="HI" on={Boolean(row.artifacts.blogHi)} />
+              <Pip label="Reels" on={row.artifacts.videoPacks.length > 0} />
+            </span>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
+  )
+}
+
+/** One produced-or-not marker. Three states, because "queued for rewrite" is not "missing". */
+function Pip({ label, on, pending = false }: { label: string; on: boolean; pending?: boolean }) {
+  const tone = on
+    ? "bg-emerald-100 text-emerald-800"
+    : pending
+      ? "bg-amber-100 text-amber-800"
+      : "bg-slate-100 text-slate-400"
+
+  return (
+    <span
+      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${tone}`}
+      title={pending ? "Exists in the retired format — awaiting overwrite EN" : undefined}
+    >
+      {label}
+    </span>
   )
 }
 

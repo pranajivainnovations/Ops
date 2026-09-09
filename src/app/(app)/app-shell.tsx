@@ -132,6 +132,8 @@ const BRANDS: Brand[] = [
         accent: "emerald",
         items: [
           { href: "/pranajiva", label: "Overview", icon: "leaf", exact: true },
+          { href: "/pranajiva/run-card", label: "Running a topic", icon: "docs" },
+          { href: "/pranajiva/content", label: "Content pipeline", icon: "docs" },
           { href: "/pranajiva/formulas", label: "Formulas", icon: "flask" },
           { href: "/pranajiva/topics", label: "Content topics", icon: "docs" },
           { href: "/pranajiva/products", label: "Product concepts", icon: "tag" },

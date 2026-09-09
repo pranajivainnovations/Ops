@@ -35,6 +35,14 @@ export default async function TopicDetail({ params }: { params: Promise<{ key: s
   const decision = decisions.get(topic.key)
   const commands = coworkCommandsFor(topic.key)
   const artifacts = kb.topicArtifacts.get(topic.key)
+  /**
+   * The pipeline's own row for this topic, when it has one.
+   *
+   * Worth reading even though the files above are the fact: the index's verse reference is
+   * provisional and has been corrected for several topics during verification, and only the ledger
+   * records the correction. PJ-C01-T05's index entry says 1.5.5-6.5; the verified reference is 1.6.
+   */
+  const ledgerRow = kb.ledger?.rows.find((row) => row.topicKey === topic.key) ?? null
 
   /**
    * Columns this page does not model explicitly, shown as-is.
@@ -148,6 +156,14 @@ export default async function TopicDetail({ params }: { params: Promise<{ key: s
           <dl className="mt-2 grid gap-x-6 gap-y-3 sm:grid-cols-[12rem_1fr]">
             <Row label="Topic ID" value={topic.key} mono />
             <Row label="Chapter" value={topic.chapter} />
+            {ledgerRow?.verseRef && <Row label="Verse reference" value={ledgerRow.verseRef} />}
+            {ledgerRow?.stage && (
+              <Row
+                label="Pipeline stage"
+                value={`${ledgerRow.stage}${ledgerRow.updated ? ` · ${ledgerRow.updated}` : ""}`}
+                mono
+              />
+            )}
             <Row label="Evidence strength" value={topic.evidenceStrength} />
             <Row
               label="Audience"
@@ -159,8 +175,46 @@ export default async function TopicDetail({ params }: { params: Promise<{ key: s
                   : null
               }
             />
-            <ArtifactRow label="Evidence Pack" artifact={artifacts?.evidencePack ?? null} missing="Not built yet" />
-            <ArtifactRow label="Article" artifact={artifacts?.article ?? null} missing="Not written yet" />
+            <ArtifactRow
+              label="Evidence Pack"
+              artifact={artifacts?.evidencePack ?? null}
+              missing="Not built yet"
+            />
+            <ArtifactRow
+              label="Blog — English"
+              artifact={artifacts?.blogEn ?? null}
+              missing={artifacts?.blogLegacy ? "Only the retired format exists" : "Not written yet"}
+            />
+            <ArtifactRow
+              label="Blog — Hindi"
+              artifact={artifacts?.blogHi ?? null}
+              missing="Not written yet"
+            />
+            {/* Shown only when one exists. An unsuffixed blog is not an English blog that forgot its
+                label — the ledger records it as the pre-2026-09-08 scholarly format, awaiting an
+                explicit `overwrite EN`. Folding it into the English row would make the topic look
+                finished while both current-format blogs are still outstanding. */}
+            {artifacts?.blogLegacy && (
+              <ArtifactRow
+                label="Earlier draft"
+                artifact={artifacts.blogLegacy}
+                missing=""
+                note="Written before the English/Hindi split, in the retired scholarly format. The pipeline will not replace it without an explicit overwrite EN."
+              />
+            )}
+            <ArtifactListRow
+              label="Reel packs"
+              artifacts={artifacts?.videoPacks ?? []}
+              missing="No video scripts yet"
+            />
+            {(artifacts?.renderFiles.length ?? 0) > 0 && (
+              <ArtifactListRow
+                label="Render files"
+                artifacts={artifacts!.renderFiles}
+                missing=""
+                note="The voiceover job and the Shotstack edit, generated from the pack's beat tables."
+              />
+            )}
             {extra.map(([column, value]) => (
               <Row key={column} label={column} value={value} />
             ))}
@@ -182,40 +236,94 @@ function ArtifactRow({
   label,
   artifact,
   missing,
+  note,
 }: {
   label: string
   artifact: TopicArtifact | null
   missing: string
+  note?: string
 }) {
   return (
     <div className="contents">
       <dt className="text-xs font-semibold text-slate-500">{label}</dt>
       <dd className="text-sm">
         {artifact ? (
-          <span className="flex flex-wrap items-center gap-2">
-            <Link
-              href={`/pranajiva/documents/${artifact.id}`}
-              className="font-medium text-slate-900 underline underline-offset-2 hover:text-slate-600"
-            >
-              {artifact.name}
-            </Link>
-            <Chip tone="teal">{artifact.stage}</Chip>
-            {artifact.webViewLink && (
-              <a
-                href={artifact.webViewLink}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-700"
-              >
-                Drive ↗
-              </a>
-            )}
-          </span>
+          <>
+            <ArtifactLine artifact={artifact} />
+            {note && <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-slate-500">{note}</p>}
+          </>
         ) : (
           <span className="text-slate-400">{missing}</span>
         )}
       </dd>
     </div>
+  )
+}
+
+/**
+ * A row that can hold several files.
+ *
+ * Reel packs are one per language under the current standard, and the render files come in pairs —
+ * so unlike the evidence pack and the blogs, "one artifact or nothing" is the wrong shape here. The
+ * language is shown because a pack whose language is null predates the bilingual standard and is
+ * genuinely different from an English one.
+ */
+function ArtifactListRow({
+  label,
+  artifacts,
+  missing,
+  note,
+}: {
+  label: string
+  artifacts: TopicArtifact[]
+  missing: string
+  note?: string
+}) {
+  return (
+    <div className="contents">
+      <dt className="text-xs font-semibold text-slate-500">{label}</dt>
+      <dd className="text-sm">
+        {artifacts.length === 0 ? (
+          <span className="text-slate-400">{missing}</span>
+        ) : (
+          <>
+            <ul className="flex flex-col gap-1">
+              {artifacts.map((artifact) => (
+                <li key={artifact.id}>
+                  <ArtifactLine artifact={artifact} />
+                </li>
+              ))}
+            </ul>
+            {note && <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-slate-500">{note}</p>}
+          </>
+        )}
+      </dd>
+    </div>
+  )
+}
+
+function ArtifactLine({ artifact }: { artifact: TopicArtifact }) {
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <Link
+        href={`/pranajiva/documents/${artifact.id}`}
+        className="font-medium text-slate-900 underline underline-offset-2 hover:text-slate-600"
+      >
+        {artifact.name}
+      </Link>
+      <Chip tone="teal">{artifact.stage}</Chip>
+      {artifact.language && <Chip tone="slate">{artifact.language}</Chip>}
+      {artifact.webViewLink && (
+        <a
+          href={artifact.webViewLink}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="text-xs text-slate-400 underline underline-offset-2 hover:text-slate-700"
+        >
+          Drive ↗
+        </a>
+      )}
+    </span>
   )
 }
 

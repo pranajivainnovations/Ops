@@ -299,14 +299,33 @@ export default async function TopicsPage({
 }
 
 /**
- * The Evidence Pack and article, if the pipeline has produced them.
+ * Everything the pipeline has produced for one topic, as chips under its row.
  *
  * Linked into the OPS reader rather than out to Drive: the whole point of the section is that the
  * team can read what the pipelines wrote without leaving the tool or holding a Google account each.
- * The article's chip is labelled with its stage, because the folder it sits in is its status.
+ * Each chip carries its stage, because the folder a file sits in is its status.
+ *
+ * There used to be a single "Article" chip. Since 2026-09-08 a topic produces an English blog and a
+ * Hindi blog, and P05 builds reel packs on top — so one chip per output, labelled by language, is
+ * the only shape that can show a topic whose Hindi is written and whose English is not. This board
+ * is a catalogue of 432 topics and stays deliberately terse; the production board carries the
+ * filenames and the pipeline's notes.
  */
 function ArtifactLinks({ artifacts }: { artifacts: TopicArtifacts | undefined }) {
-  if (!artifacts?.evidencePack && !artifacts?.article) return null
+  if (!artifacts) return null
+
+  const blogs = [artifacts.blogEn, artifacts.blogHi].filter(
+    (blog): blog is NonNullable<typeof blog> => Boolean(blog)
+  )
+
+  if (
+    !artifacts.evidencePack &&
+    blogs.length === 0 &&
+    !artifacts.blogLegacy &&
+    artifacts.videoPacks.length === 0
+  ) {
+    return null
+  }
 
   return (
     <p className="mt-1 flex flex-wrap gap-1">
@@ -319,15 +338,36 @@ function ArtifactLinks({ artifacts }: { artifacts: TopicArtifacts | undefined })
           Evidence Pack
         </Link>
       )}
-      {artifacts.article && (
+      {blogs.map((blog) => (
         <Link
-          href={`/pranajiva/documents/${artifacts.article.id}`}
+          key={blog.id}
+          href={`/pranajiva/documents/${blog.id}`}
           className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 hover:bg-emerald-200"
-          title={artifacts.article.name}
+          title={blog.name}
         >
-          Article · {artifacts.article.stage}
+          Blog {blog.language} · {blog.stage}
+        </Link>
+      ))}
+      {/* Amber, not emerald: this one is queued for rewrite, not finished work. */}
+      {!artifacts.blogEn && artifacts.blogLegacy && (
+        <Link
+          href={`/pranajiva/documents/${artifacts.blogLegacy.id}`}
+          className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 hover:bg-amber-200"
+          title={`${artifacts.blogLegacy.name} — retired format, awaiting overwrite EN`}
+        >
+          Blog · retired format
         </Link>
       )}
+      {artifacts.videoPacks.map((pack) => (
+        <Link
+          key={pack.id}
+          href={`/pranajiva/documents/${pack.id}`}
+          className="rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 hover:bg-violet-200"
+          title={pack.name}
+        >
+          Reels{pack.language ? ` ${pack.language}` : ""} · {pack.stage}
+        </Link>
+      ))}
     </p>
   )
 }
