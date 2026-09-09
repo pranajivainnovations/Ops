@@ -69,7 +69,7 @@ export default async function BoardPage({
       )}
 
       {/* The thread. Oldest at the top, newest at the bottom — the direction a conversation runs. */}
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
         {shown.length === 0 && (
           <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-xs text-slate-500">
             {view === "tasks"
@@ -78,14 +78,39 @@ export default async function BoardPage({
           </p>
         )}
 
-        {shown.map((message) => (
-          <MessageRow
-            key={message.id}
-            message={message}
-            team={team}
-            isMine={message.authorId === session?.userId}
-          />
-        ))}
+        {shown.map((message, index) => {
+          const previous = index > 0 ? shown[index - 1] : null
+
+          /* A new day gets a divider. Without one a board read weeks later is a wall of "14:32" with
+             no idea whether two messages are minutes or months apart. */
+          const newDay =
+            !previous || previous.createdAt.toDateString() !== message.createdAt.toDateString()
+
+          /* Consecutive messages from the same person inside five minutes are one turn of speech, so
+             only the first carries an avatar and a name. Repeating them makes a person typing three
+             short lines look like three separate people. A task always breaks the group — it is a
+             different kind of object and needs its own header. */
+          const grouped =
+            !newDay &&
+            previous !== null &&
+            previous.authorId === message.authorId &&
+            !previous.deletedAt &&
+            !message.isTask &&
+            !previous.isTask &&
+            message.createdAt.getTime() - previous.createdAt.getTime() < 5 * 60 * 1000
+
+          return (
+            <div key={message.id}>
+              {newDay && <DayDivider date={message.createdAt} />}
+              <MessageRow
+                message={message}
+                team={team}
+                isMine={message.authorId === session?.userId}
+                grouped={grouped}
+              />
+            </div>
+          )
+        })}
       </div>
 
       {/* The composer is at the bottom, where the newest message is and where a thumb already is. */}
@@ -158,10 +183,13 @@ function MessageRow({
   message,
   team,
   isMine,
+  grouped,
 }: {
   message: BoardMessage
   team: TeamMember[]
   isMine: boolean
+  /** Part of a run from the same author — render without repeating the avatar and name. */
+  grouped: boolean
 }) {
   if (message.deletedAt) {
     return (
@@ -177,9 +205,19 @@ function MessageRow({
     message.dueOn !== null &&
     message.dueOn < new Date().toISOString().slice(0, 10)
 
+  if (grouped) {
+    return (
+      <article className={`rounded-xl border border-transparent bg-white px-4 pb-2 pt-0 ${isMine ? "border-l-2 border-l-violet-300" : ""}`}>
+        <p className="whitespace-pre-wrap break-words pl-8 text-sm leading-relaxed text-slate-800">
+          {message.body}
+        </p>
+      </article>
+    )
+  }
+
   return (
     <article
-      className={`rounded-xl border bg-white p-4 ${
+      className={`mt-2 rounded-xl border bg-white p-4 ${isMine ? "border-l-2 border-l-violet-400" : ""} ${
         message.isTask && !message.isDone
           ? overdue
             ? "border-red-300 bg-red-50/40"
@@ -187,8 +225,15 @@ function MessageRow({
           : "border-slate-200"
       }`}
     >
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-xs font-bold text-slate-900">{message.authorName}</span>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        {/* Initials rather than photographs: nobody has uploaded one, and a row of identical grey
+            silhouettes distinguishes nothing. The colour is derived from the user id, so a person is
+            the same colour on every message and the eye can follow one voice down the page without
+            reading a single name. */}
+        <Avatar name={message.authorName} seed={message.authorId ?? message.authorName} />
+        <span className="text-xs font-bold text-slate-900">
+          {isMine ? "You" : message.authorName}
+        </span>
         <time className="text-[11px] text-slate-400" dateTime={message.createdAt.toISOString()}>
           {formatWhen(message.createdAt)}
         </time>
@@ -344,6 +389,72 @@ function Composer({ team }: { team: TeamMember[] }) {
         </button>
       </div>
     </form>
+  )
+}
+
+/**
+ * Initials on a coloured disc, the colour derived from the person rather than their position.
+ *
+ * Seeding from the user id rather than the name matters: two people called Priya would otherwise be
+ * the same colour, and a renamed account would silently change colour and break the recognition the
+ * avatar exists to provide.
+ *
+ * The palette is picked for distinguishability rather than prettiness — the hues stay apart for the
+ * common forms of colour blindness, and the initials carry the meaning regardless, so colour is a
+ * shortcut here and never the information.
+ */
+const AVATAR_COLOURS = [
+  "bg-violet-500",
+  "bg-amber-500",
+  "bg-teal-600",
+  "bg-rose-500",
+  "bg-sky-600",
+  "bg-emerald-600",
+  "bg-fuchsia-600",
+  "bg-slate-600",
+]
+
+function Avatar({ name, seed }: { name: string; seed: string }) {
+  const initials = name
+    .split(/s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0
+  const colour = AVATAR_COLOURS[hash % AVATAR_COLOURS.length]
+
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white ${colour}`}
+    >
+      {initials || "?"}
+    </span>
+  )
+}
+
+/** Today, Yesterday, or the date — a board read weeks later needs to know which. */
+function DayDivider({ date }: { date: Date }) {
+  const today = new Date().toDateString()
+  const yesterday = new Date(Date.now() - 86400000).toDateString()
+  const day = date.toDateString()
+
+  const label =
+    day === today
+      ? "Today"
+      : day === yesterday
+        ? "Yesterday"
+        : date.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })
+
+  return (
+    <div className="my-4 flex items-center gap-3">
+      <span className="h-px flex-1 bg-slate-200" />
+      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</span>
+      <span className="h-px flex-1 bg-slate-200" />
+    </div>
   )
 }
 

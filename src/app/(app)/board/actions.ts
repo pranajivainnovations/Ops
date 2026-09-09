@@ -86,7 +86,12 @@ export async function toggleDone(formData: FormData): Promise<void> {
     `UPDATE crossfriend.team_messages
         SET is_done = NOT is_done,
             done_at = CASE WHEN is_done THEN NULL ELSE NOW() END,
-            done_by = CASE WHEN is_done THEN NULL ELSE $2 END
+            /* The cast is load-bearing. A bare $2 inside a CASE alongside NULL gives Postgres
+               nothing to infer from, so it types the parameter as text and refuses to assign it to a
+               uuid column — "column done_by is of type uuid but expression is of type text". Direct
+               assignments elsewhere infer from the target column and need no cast; only the CASE
+               loses that. */
+            done_by = CASE WHEN is_done THEN NULL ELSE $2::uuid END
       WHERE id = $1 AND is_task AND deleted_at IS NULL`,
     [id, userId]
   )
@@ -101,8 +106,8 @@ export async function assignTask(formData: FormData): Promise<void> {
 
   await getDbPool().query(
     `UPDATE crossfriend.team_messages
-        SET assignee_id = $2,
-            due_on      = $3
+        SET assignee_id = $2::uuid,
+            due_on      = $3::date
       WHERE id = $1 AND is_task AND deleted_at IS NULL`,
     [id, str(formData, "assignee_id") || null, str(formData, "due_on") || null]
   )
