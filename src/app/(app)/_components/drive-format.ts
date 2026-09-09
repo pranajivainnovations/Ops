@@ -1,5 +1,5 @@
 /**
- * Presentation helpers shared by the research list and the document viewer.
+ * Presentation helpers shared by every Drive list and document viewer, in both sections.
  *
  * Kept out of lib/google-drive.ts on purpose: that file is the Drive contract, and how a MIME type
  * is spelled for a human is a decision this screen makes, not something the API dictates.

@@ -129,3 +129,40 @@ export async function uploadAnnouncementImage(
 
   return { s3Key, url: buildPublicUrl(s3Key) }
 }
+
+/**
+ * Uploads an image shared on the team board.
+ *
+ * Its own prefix for the same reason announcements have one: the key is what makes an object
+ * identifiable a year later, and board attachments are the one category here that is genuinely
+ * disposable — a prefix means they can be found and expired without touching anything that is not.
+ *
+ * Same validation and the same reasoning as the others: only signed-in ops staff can reach this.
+ */
+export async function uploadBoardImage(
+  buffer: Buffer,
+  mimeType: string
+): Promise<BakerImageUploadResult> {
+  if (buffer.length === 0) throw new Error("Uploaded file is empty.")
+  if (buffer.length > MAX_BAKER_IMAGE_BYTES) {
+    throw new Error(`Image must be under ${MAX_BAKER_IMAGE_BYTES / (1024 * 1024)}MB.`)
+  }
+  const extension = EXTENSION_BY_MIME[mimeType]
+  if (!extension) throw new Error("File must be a JPEG, PNG, or WEBP image.")
+
+  const s3Key = `board/${crypto.randomUUID()}.${extension}`
+
+  const client = getS3Client()
+  await client.send(
+    new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET || "pranajiva-innovations",
+      Key: s3Key,
+      Body: buffer,
+      ContentType: mimeType,
+      CacheControl: "public, max-age=31536000, immutable",
+      ACL: "public-read",
+    })
+  )
+
+  return { s3Key, url: buildPublicUrl(s3Key) }
+}

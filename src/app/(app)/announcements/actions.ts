@@ -56,10 +56,32 @@ function validateCtaUrl(value: string): string {
   return parsed.toString()
 }
 
-/** Local midnight boundaries are what a person means by a date; store the instant. */
+/**
+ * Interprets what somebody typed as India time, always.
+ *
+ * ── The bug this fixes ─────────────────────────────────────────────────────────────────────────
+ * A datetime-local input carries no timezone — the browser hands over "2026-09-09T23:00" and nothing
+ * else. `new Date()` on that string resolves it against whatever zone the *server* runs in, which
+ * here is UTC. So an announcement set to start at 11pm was stored as 23:00 UTC and scheduled for
+ * 4:30am IST the next morning: published, correct by its own data, and invisible for five hours with
+ * nothing on any screen to explain why.
+ *
+ * ── Why IST rather than the browser's offset ───────────────────────────────────────────────────
+ * The offset could be sent from the client, and it would be the wrong answer. This banner is shown
+ * to customers in India; "start it at 9am" means 9am where the customers are, not where the person
+ * scheduling it happens to be sitting. Pinning it to Asia/Kolkata makes the field mean the same
+ * thing from a laptop in Delhi and a phone in another country.
+ *
+ * +05:30 is hardcoded rather than computed because India has no daylight saving and has not changed
+ * its offset since 1945 — a lookup here would be machinery guarding against nothing.
+ */
+const IST_OFFSET = "+05:30"
+
 function optionalDate(value: string, label: string): string | null {
   if (!value) return null
-  const parsed = new Date(value)
+  // "2026-09-09T23:00" → "2026-09-09T23:00:00+05:30", an unambiguous instant.
+  const withSeconds = value.length === 16 ? `${value}:00` : value
+  const parsed = new Date(`${withSeconds}${IST_OFFSET}`)
   if (Number.isNaN(parsed.getTime())) fail(`${label} is not a valid date.`)
   return parsed.toISOString()
 }

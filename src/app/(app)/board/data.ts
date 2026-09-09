@@ -23,6 +23,18 @@ export interface BoardMessage {
   dueOn: string | null
   doneAt: Date | null
   doneByName: string | null
+  /** An image shared with the message, in our own bucket. Null on an ordinary message. */
+  imageUrl: string | null
+  /** The Open Graph card for the first link, captured when the message was posted. */
+  link: LinkCard | null
+}
+
+export interface LinkCard {
+  url: string
+  title: string | null
+  description: string | null
+  imageUrl: string | null
+  siteName: string | null
 }
 
 export interface TeamMember {
@@ -39,13 +51,49 @@ export async function boardSchemaReady(): Promise<boolean> {
 }
 
 /**
+ * True when the attachment columns exist.
+ *
+ * Checked separately from the table because the two migrations land independently: between deploying
+ * this code and running AddBoardAttachments, every board query would name columns that are not there
+ * and the page would fail whole. Asking first costs one cheap catalogue lookup and keeps the board
+ * readable in that window, minus the attachments it cannot store yet.
+ */
+export async function attachmentsSchemaReady(): Promise<boolean> {
+  const { rows } = await getDbPool().query<{ ready: boolean }>(
+    `SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'crossfriend'
+           AND table_name   = 'team_messages'
+           AND column_name  = 'image_url'
+      ) AS ready`
+  )
+  return Boolean(rows[0]?.ready)
+}
+
+/**
  * The whole board, oldest first.
  *
  * A hard limit rather than pagination. The board is read from the bottom like any chat, so the
  * useful direction is backwards from now — and a team that has written more than a thousand messages
  * has earned a proper search, which is a different feature than a scrollback.
  */
-export async function loadBoard(limit = 500): Promise<BoardMessage[]> {
+export async function loadBoard(hasAttachments: boolean, limit = 500): Promise<BoardMessage[]> {
+  /* Selected as literal NULLs before the migration lands, so the shape of every row is identical
+     either way and nothing downstream has to know which state the database is in. */
+  const attachmentColumns = hasAttachments
+    ? `m.image_url,
+            m.link_url,
+            m.link_title,
+            m.link_description,
+            m.link_image_url,
+            m.link_site`
+    : `NULL::text AS image_url,
+            NULL::text AS link_url,
+            NULL::text AS link_title,
+            NULL::text AS link_description,
+            NULL::text AS link_image_url,
+            NULL::text AS link_site`
+
   const { rows } = await getDbPool().query(
     `SELECT m.id,
             m.body,
@@ -60,7 +108,8 @@ export async function loadBoard(limit = 500): Promise<BoardMessage[]> {
             COALESCE(assignee.name, assignee.email)             AS assignee_name,
             m.due_on,
             m.done_at,
-            COALESCE(closer.name, closer.email)                 AS done_by_name
+            COALESCE(closer.name, closer.email)                 AS done_by_name,
+            ${attachmentColumns}
        FROM crossfriend.team_messages m
        LEFT JOIN baker_network.ops_users author   ON author.id   = m.author_id
        LEFT JOIN baker_network.ops_users assignee ON assignee.id = m.assignee_id
@@ -89,6 +138,19 @@ export async function loadBoard(limit = 500): Promise<BoardMessage[]> {
       dueOn: r.due_on ? new Date(r.due_on).toISOString().slice(0, 10) : null,
       doneAt: r.done_at,
       doneByName: r.done_by_name,
+      imageUrl: r.image_url ?? null,
+      /* The card is assembled only when there is a URL to point it at. The database enforces the
+         same rule, so a row with orphaned preview text cannot exist — this is the reader agreeing
+         with the constraint rather than re-deciding it. */
+      link: r.link_url
+        ? {
+            url: r.link_url,
+            title: r.link_title ?? null,
+            description: r.link_description ?? null,
+            imageUrl: r.link_image_url ?? null,
+            siteName: r.link_site ?? null,
+          }
+        : null,
     }))
     .reverse()
 }

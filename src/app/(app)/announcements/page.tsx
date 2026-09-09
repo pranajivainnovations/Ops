@@ -330,7 +330,7 @@ function Composer({ editing }: { editing: Row | null }) {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Starts" hint="Optional. Blank means as soon as it is published.">
+        <Field label="Starts (IST)" hint="Optional. Blank means as soon as it is published.">
           <input
             type="datetime-local"
             name="starts_at"
@@ -338,7 +338,7 @@ function Composer({ editing }: { editing: Row | null }) {
             className="w-full rounded-lg border-2 border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none"
           />
         </Field>
-        <Field label="Ends" hint="Optional, but a banner with no end tends to become furniture.">
+        <Field label="Ends (IST)" hint="Optional, but a banner with no end tends to become furniture.">
           <input
             type="datetime-local"
             name="ends_at"
@@ -394,8 +394,10 @@ function Chip({ tone, children }: { tone: "emerald" | "sky" | "slate"; children:
   return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${style}`}>{children}</span>
 }
 
+/** Always IST, never the container's clock — which is UTC and would read five hours early. */
 function formatDate(date: Date): string {
   return new Date(date).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -403,10 +405,25 @@ function formatDate(date: Date): string {
   })
 }
 
-/** datetime-local wants local wall-clock without a zone; the database stores the instant. */
+/**
+ * The stored instant, back as IST wall-clock for the input.
+ *
+ * getFullYear/getHours read in the *server's* zone, so on a UTC container they would show a time
+ * five and a half hours earlier than the one that was saved — meaning reopening an announcement to
+ * edit it would silently shift its schedule backwards every time somebody pressed Save.
+ */
 function toLocalInput(date: Date | null): string {
   if (!date) return ""
-  const d = new Date(date)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(date))
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00"
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`
 }

@@ -8,29 +8,31 @@ import {
   getDriveTree,
   isDriveConfigured,
 } from "@/lib/google-drive"
-import DocumentBody from "../../../_components/document-body"
-import { formatDate, formatSize, mimeLabel, statusClass } from "../../../_components/drive-format"
+import DocumentBody from "../../_components/document-body"
+import { formatDate, formatSize, mimeLabel, statusClass } from "../../_components/drive-format"
+import { stageLabel } from "../_components"
 
 /**
- * One research document, read out of Drive and rendered in OPS.
+ * One CrossFriend artefact, read out of Drive and rendered in OPS.
  *
- * Reading here rather than bouncing to Drive is the whole point of the section: the team can scan
- * what the pipelines produced without leaving the tool, and without needing a Google account each.
- * The "Open in Drive" link stays, for commenting and for anything this renderer cannot show.
+ * The reading pane the Pranajiva section already has, pointed at the other folder. Reading here
+ * rather than bouncing to Drive is the whole point: the team can see what the pipeline produced
+ * without leaving the tool, and without each needing a Google account on the folder. The "Open in
+ * Drive" link stays, for commenting and for anything this renderer cannot show.
  */
 export const dynamic = "force-dynamic"
 
 /** Keys rendered as their own labelled chips; everything else in frontmatter becomes a plain chip. */
 const PRIMARY_META = ["status", "pipeline", "subject", "date", "owner"]
 
-export default async function ResearchDocumentPage({
+export default async function CrossFriendDocumentPage({
   params,
 }: {
   params: Promise<{ fileId: string }>
 }) {
   const { fileId } = await params
 
-  if (!isDriveConfigured()) notFound()
+  if (!isDriveConfigured("crossfriend")) notFound()
 
   const meta = await getDocumentMeta(fileId)
   if (!meta) notFound()
@@ -49,13 +51,24 @@ export default async function ResearchDocumentPage({
 
   /**
    * The file carries a parent ID but not a parent name, so its place in the hierarchy is looked up
-   * in the walked tree. Matching on the file's own id rather than its parent's is what makes this
-   * work for a document four levels down: the tree already knows every file's full path and which
-   * pipeline it belongs to, and the tree is cached, so this costs nothing.
+   * in the walked tree — which is already cached, so this costs nothing.
+   *
+   * The lookup is also what keeps this route honest about scope. getDocumentMeta will happily return
+   * any file the service account can see, including one in the Pranajiva knowledge base; not finding
+   * it in the CrossFriend tree is how a wrong id ends up on the Pranajiva reader's URL instead of
+   * quietly rendering here under the wrong heading.
    */
-  const tree = await getDriveTree().catch(() => null)
+  const tree = await getDriveTree("crossfriend").catch(() => null)
   const inTree = tree?.documents.find((d) => d.id === meta.id) ?? null
-  const pipelineName = inTree?.pipeline ?? null
+
+  if (tree && !inTree) {
+    const inPranajiva = await getDriveTree("pranajiva")
+      .then((t) => t.documents.some((d) => d.id === meta.id))
+      .catch(() => false)
+    if (inPranajiva) return <WrongSection fileId={meta.id} name={meta.name} />
+  }
+
+  const stage = inTree?.pipeline ?? null
   const folderPath = inTree?.path ?? []
 
   const frontmatter = content?.meta ?? {}
@@ -72,25 +85,21 @@ export default async function ResearchDocumentPage({
     <main className="min-h-screen flex-1 bg-slate-50">
       <header className="border-b border-slate-200 bg-white px-6 py-4">
         <Link
-          href={
-            pipelineName
-              ? `/pranajiva/documents?pipeline=${encodeURIComponent(pipelineName)}`
-              : "/pranajiva/documents"
-          }
-          className="text-xs font-semibold text-slate-500 hover:text-slate-800"
+          href={stage ? `/documents?stage=${encodeURIComponent(stage)}` : "/documents"}
+          className="text-xs font-semibold capitalize text-slate-500 hover:text-slate-800"
         >
-          ← {pipelineName ?? "All documents"}
+          ← {stage ? stageLabel(stage) : "Documents"}
         </Link>
 
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-base font-bold text-slate-900">{meta.name}</h1>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {/* The full folder path, because "verification" exists under three pipelines and the
-                  immediate parent alone would not say which document this is. */}
-              {folderPath.length > 0 ? `${folderPath.join(" / ")} · ` : ""}
-              {mimeLabel(meta.mimeType)} · Updated {formatDate(meta.modifiedTime)}
-              {meta.size !== null ? ` · ${formatSize(meta.size)}` : ""}
+            <p className="mt-0.5 text-xs capitalize text-slate-500">
+              {folderPath.length > 0 ? `${folderPath.map(stageLabel).join(" / ")} · ` : ""}
+              <span className="normal-case">
+                {mimeLabel(meta.mimeType)} · Updated {formatDate(meta.modifiedTime)}
+                {meta.size !== null ? ` · ${formatSize(meta.size)}` : ""}
+              </span>
             </p>
           </div>
           {meta.webViewLink && (
@@ -127,7 +136,7 @@ export default async function ResearchDocumentPage({
             {tags.map((tag) => (
               <span
                 key={tag}
-                className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-800"
+                className="rounded-full border border-cf-purple-200 bg-cf-purple-50 px-2 py-0.5 text-[10px] font-medium text-cf-purple-800"
               >
                 {tag}
               </span>
@@ -173,6 +182,34 @@ export default async function ResearchDocumentPage({
             <DocumentBody text={content?.text ?? ""} />
           </article>
         )}
+      </div>
+    </main>
+  )
+}
+
+/**
+ * A Pranajiva document reached through the CrossFriend URL.
+ *
+ * It renders identically either way, so silently showing it would put Ayurveda research under a
+ * CrossFriend heading with a back link into the wrong section — a small lie that survives being
+ * bookmarked and shared. Pointing at the right reader costs one click and keeps the two bodies of
+ * work distinguishable.
+ */
+function WrongSection({ fileId, name }: { fileId: string; name: string }) {
+  return (
+    <main className="min-h-screen flex-1 bg-slate-50 p-6">
+      <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-6">
+        <p className="text-sm font-semibold text-slate-900">This document lives in Pranajiva</p>
+        <p className="mt-1 text-xs text-slate-500">
+          <span className="font-medium text-slate-700">{name}</span> is in the Ayurveda knowledge
+          base, not the CrossFriend folder.
+        </p>
+        <Link
+          href={`/pranajiva/documents/${fileId}`}
+          className="mt-4 inline-block rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+        >
+          Read it there →
+        </Link>
       </div>
     </main>
   )

@@ -10,7 +10,7 @@ import {
 import RecordCard, { CardList, TableWrap } from "../../_components/record-card"
 import { EmptyRow, SectionHeader } from "../_components/section"
 import { DriveErrorPanel, SetupPanel } from "../_components/setup"
-import { formatSize, mimeLabel, relativeTime } from "../format"
+import { formatSize, mimeLabel, relativeTime } from "../../_components/drive-format"
 
 /**
  * Every document in the knowledge base, whatever shape it is in.

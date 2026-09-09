@@ -3,6 +3,7 @@ import Link from "next/link"
 import { getCurrentSession } from "@/lib/auth"
 import { assignTask, deleteMessage, postMessage, toggleDone, toggleTask } from "./actions"
 import {
+  attachmentsSchemaReady,
   boardSchemaReady,
   loadBoard,
   loadTeam,
@@ -12,6 +13,8 @@ import {
   type TeamMember,
 } from "./data"
 import EnableNotifications from "./enable-notifications"
+import MessageBody from "./message-body"
+import ScrollToLatest from "./scroll-to-latest"
 import { pushConfig } from "@/lib/push"
 
 /**
@@ -36,6 +39,13 @@ import { pushConfig } from "@/lib/push"
  * ── No live updates, and the page says so ──────────────────────────────────────────────────────
  * There is no socket here. The board reloads when you post, and there is a refresh control. Claiming
  * live delivery it cannot honour would be the more expensive mistake — people would stop checking.
+ *
+ * ── Why the thread scrolls and the page does not ───────────────────────────────────────────────
+ * The composer used to be sticky inside a page that scrolled as one. That keeps the box on screen
+ * but floats it over the conversation, so the newest messages — the ones being replied to — sit
+ * underneath the thing you are typing in, and the gap above it changes with the scroll position.
+ * Giving the thread its own scroll pane makes the composer a fixed part of the frame instead: the
+ * space above it is constant, and nothing is ever hidden behind it.
  */
 export const dynamic = "force-dynamic"
 
@@ -61,8 +71,10 @@ export default async function BoardPage({
     )
   }
 
+  const hasAttachments = await attachmentsSchemaReady()
+
   const [messages, team, session, pushReady] = await Promise.all([
-    loadBoard(),
+    loadBoard(hasAttachments),
     loadTeam(),
     getCurrentSession(),
     pushSchemaReady(),
@@ -90,7 +102,7 @@ export default async function BoardPage({
   const shown = view === "tasks" ? messages.filter((m) => m.isTask && !m.deletedAt) : messages
 
   return (
-    <Shell view={view} openCount={openTasks.length}>
+    <Shell view={view} openCount={openTasks.length} composer={<Composer team={team} canAttach={hasAttachments} />}>
       {params.error && (
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
           {params.error}
@@ -144,24 +156,32 @@ export default async function BoardPage({
         })}
       </div>
 
-      {/* The composer is at the bottom, where the newest message is and where a thumb already is. */}
-      <Composer team={team} />
+      <ScrollToLatest targetId={THREAD_ID} />
     </Shell>
   )
 }
+
+/** The scroll pane's id, shared between the markup and the component that scrolls it. */
+const THREAD_ID = "board-thread"
 
 function Shell({
   children,
   view,
   openCount,
+  composer,
 }: {
   children: React.ReactNode
   view: "all" | "tasks"
   openCount?: number
+  /** Rendered in the fixed footer rather than in the thread, so it never scrolls away. */
+  composer?: React.ReactNode
 }) {
   return (
-    <main className="min-h-screen flex-1 bg-slate-50">
-      <header className="border-b border-slate-200 bg-white px-6 py-4">
+    /* 3.25rem is the mobile top bar in the app shell, which sits above this and is hidden from sm:
+       up. Subtracting it is what keeps the composer on screen rather than just below it on a phone.
+       100dvh, not 100vh, so the browser chrome collapsing does not leave the box under the URL bar. */
+    <main className="flex h-[calc(100dvh-3.25rem)] flex-1 flex-col bg-slate-50 sm:h-[100dvh]">
+      <header className="shrink-0 border-b border-slate-200 bg-white px-6 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-base font-bold text-slate-900">Team board</h1>
@@ -184,7 +204,16 @@ function Shell({
           </div>
         </div>
       </header>
-      <div className="space-y-4 p-6">{children}</div>
+
+      {/* min-h-0 is load-bearing: without it a flex child refuses to shrink below its content and
+          the pane grows instead of scrolling, pushing the composer off the bottom of the screen. */}
+      <div id={THREAD_ID} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+        {children}
+      </div>
+
+      {composer && (
+        <div className="shrink-0 border-t border-slate-200 bg-white px-6 py-4">{composer}</div>
+      )}
     </main>
   )
 }
@@ -239,9 +268,14 @@ function MessageRow({
   if (grouped) {
     return (
       <article className={`rounded-xl border border-transparent bg-white px-4 pb-2 pt-0 ${isMine ? "border-l-2 border-l-violet-300" : ""}`}>
-        <p className="whitespace-pre-wrap break-words pl-8 text-sm leading-relaxed text-slate-800">
-          {message.body}
-        </p>
+        <div className="pl-8">
+          {message.body && (
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800">
+              <MessageBody text={message.body} />
+            </p>
+          )}
+          <Attachments message={message} />
+        </div>
       </article>
     )
   }
@@ -285,13 +319,17 @@ function MessageRow({
 
       {/* whitespace-pre-wrap, so a message written with line breaks keeps them. Not Markdown — this
           is a chat box, and half-rendered formatting is worse than none. */}
-      <p
-        className={`mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed ${
-          message.isDone ? "text-slate-400 line-through" : "text-slate-800"
-        }`}
-      >
-        {message.body}
-      </p>
+      {message.body && (
+        <p
+          className={`mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed ${
+            message.isDone ? "text-slate-400 line-through" : "text-slate-800"
+          }`}
+        >
+          <MessageBody text={message.body} muted={message.isDone} />
+        </p>
+      )}
+
+      <Attachments message={message} />
 
       {message.isTask && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
@@ -376,21 +414,104 @@ function MessageRow({
   )
 }
 
-function Composer({ team }: { team: TeamMember[] }) {
+/**
+ * An image or a link card hanging off a message.
+ *
+ * Rendered below the text rather than replacing it, because the caption is usually the point — the
+ * picture is what somebody is talking about, not the message itself.
+ */
+function Attachments({ message }: { message: BoardMessage }) {
+  if (!message.imageUrl && !message.link) return null
+
   return (
+    <div className="mt-2 space-y-2">
+      {message.imageUrl && (
+        /* Opens full size in a new tab rather than a lightbox. A modal would be a client component
+           and a focus trap to maintain, to show one image somebody can already open. */
+        <a href={message.imageUrl} target="_blank" rel="noreferrer noopener" className="block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={message.imageUrl}
+            alt=""
+            loading="lazy"
+            className="max-h-80 w-auto max-w-full rounded-xl border border-slate-200 object-contain"
+          />
+        </a>
+      )}
+
+      {message.link && (
+        <a
+          href={message.link.url}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="flex max-w-lg gap-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 transition hover:border-slate-300 hover:bg-white"
+        >
+          {message.link.imageUrl && (
+            /* Fixed width and shrink-0: a flex item will not go below its content width on its own,
+               and a wide thumbnail would otherwise squeeze the title into a column of single
+               letters. This exact bug has been fixed three times in this project. */
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={message.link.imageUrl}
+              alt=""
+              loading="lazy"
+              className="h-auto w-24 shrink-0 self-stretch object-cover"
+            />
+          )}
+          <div className={`min-w-0 flex-1 py-2.5 pr-3 ${message.link.imageUrl ? "" : "pl-3"}`}>
+            {message.link.siteName && (
+              <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                {message.link.siteName}
+              </p>
+            )}
+            {message.link.title && (
+              <p className="mt-0.5 line-clamp-2 text-xs font-bold text-slate-800">
+                {message.link.title}
+              </p>
+            )}
+            {message.link.description && (
+              <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-slate-500">
+                {message.link.description}
+              </p>
+            )}
+          </div>
+        </a>
+      )}
+    </div>
+  )
+}
+
+function Composer({ team, canAttach }: { team: TeamMember[]; canAttach: boolean }) {
+  return (
+    /* multipart, or the file never leaves the browser — a server action reads a plain urlencoded
+       form fine, and the image would silently arrive as a filename string. */
     <form
       action={postMessage}
-      className="sticky bottom-4 rounded-2xl border-2 border-slate-300 bg-white p-3 shadow-lg"
+      encType="multipart/form-data"
+      className="rounded-2xl border-2 border-slate-300 bg-white p-3"
     >
       <textarea
         name="body"
         rows={3}
-        required
         maxLength={4000}
-        placeholder="Write to the team…"
+        placeholder="Write to the team… paste a link and it will preview"
         className="w-full resize-none border-0 bg-transparent p-1 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
       />
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+        {canAttach && (
+          /* A plain file input styled as a button. No preview thumbnail, which would mean making the
+             whole composer a client component to show something the file picker already showed. */
+          <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50">
+            <span aria-hidden="true">📎</span>
+            Photo
+            <input
+              type="file"
+              name="image"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+            />
+          </label>
+        )}
         <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
           <input type="checkbox" name="is_task" className="h-3.5 w-3.5 accent-amber-500" />
           It&rsquo;s a task

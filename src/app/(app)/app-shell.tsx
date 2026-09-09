@@ -101,6 +101,7 @@ const BRANDS: Brand[] = [
         accent: "teal",
         items: [
           { href: "/rnd", label: "R&D", icon: "flask" },
+          { href: "/documents", label: "Documents", icon: "docs" },
           { href: "/designs", label: "AI Designs", icon: "image" },
           { href: "/seo", label: "Search & AI", icon: "search" },
           { href: "/deploys", label: "Deployments", icon: "rocket" },

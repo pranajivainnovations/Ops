@@ -1,7 +1,7 @@
 import React from "react"
 
 /**
- * Minimal Markdown renderer for research documents.
+ * Minimal Markdown renderer for documents read out of Drive.
  *
  * Deliberately not a Markdown library. The pipelines emit ordinary prose — headings, lists, tables,
  * fenced code — and pulling in a parser plus a sanitiser to cover the long tail of the spec would be

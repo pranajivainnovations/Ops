@@ -11,7 +11,7 @@ import {
 import { ledgerStageRank } from "@/lib/pranajiva/ledger"
 import { DriveErrorPanel } from "../_components/setup"
 import { SectionHeader, StatCard } from "../_components/section"
-import { relativeTime } from "../format"
+import { relativeTime } from "../../_components/drive-format"
 
 /**
  * The production board — every topic the pipeline has actually started, and what exists for it.

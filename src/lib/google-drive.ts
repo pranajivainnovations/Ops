@@ -1,9 +1,15 @@
 /**
  * Read-only Google Drive client.
  *
- * The Cowork research pipelines write their output to the PRANAJIVA_AYURVEDA_KNOWLEDGE_BASE folder.
- * This reads it back so OPS can show it, and does nothing else: no writes, no copies into Postgres,
- * no sync job.
+ * The Cowork pipelines write their output to Drive — PRANAJIVA_AYURVEDA_KNOWLEDGE_BASE for the
+ * Ayurveda research, CROSSFRIEND_MARKETING for the cake business. This reads them back so OPS can
+ * show them, and does nothing else: no writes, no copies into Postgres, no sync job.
+ *
+ * ── Why one client with two roots, not two clients ──────────────────────────────────────────────
+ * The two bodies of work are unrelated, but reaching them is identical: the same service account,
+ * the same read-only scope, the same folder walk. A second copy of this file would be a second place
+ * to fix the next Drive quirk, and the first one found would be the one nobody remembered. What
+ * genuinely differs between them is one folder ID, so that is the only thing the workspace selects.
  *
  * ── Why read Drive live rather than mirror it ───────────────────────────────────────────────────
  * A mirror is a second copy that drifts, and the pipelines write to Drive on their own schedule —
@@ -74,22 +80,39 @@ export interface DriveDocumentContent {
 }
 
 /**
- * Configuration is one folder ID, not a list of pipelines.
+ * Configuration is one folder ID per workspace, not a list of pipelines.
  *
- * Every subfolder of the root is a pipeline, discovered at read time. Starting a fifth pipeline in
- * Cowork means creating a folder and sharing it — no env change, no deploy, no code edit. Same rule
- * the catalogue taxonomy follows: show what exists, rather than what someone remembered to hardcode.
+ * Every subfolder of a root is a pipeline, discovered at read time. Starting another one in Cowork
+ * means creating a folder and sharing it — no env change, no deploy, no code edit. Same rule the
+ * catalogue taxonomy follows: show what exists, rather than what someone remembered to hardcode.
  */
-export function driveConfig(): {
-  clientEmail: string
-  privateKey: string
-  rootFolderId: string
-} | null {
+export type DriveWorkspace = "pranajiva" | "crossfriend"
+
+/**
+ * Which variable holds each workspace's root folder.
+ *
+ * Named here rather than inlined at the call sites because the setup panels print it: when Drive is
+ * not connected, the useful screen is one that says *which* variable is missing, and it can only say
+ * that if the name is a value rather than a string retyped into a template.
+ */
+export const ROOT_FOLDER_ENV: Record<DriveWorkspace, string> = {
+  pranajiva: "GOOGLE_DRIVE_ROOT_FOLDER_ID",
+  crossfriend: "CROSSFRIEND_DRIVE_ROOT_FOLDER_ID",
+}
+
+/**
+ * The service account, independent of any folder.
+ *
+ * Separate from driveConfig because minting a token needs the credentials and nothing else. Folded
+ * together, a deployment that had configured only the CrossFriend root would fail to authenticate at
+ * all — an absent Pranajiva folder ID would read as "no credentials", which is a confusing lie about
+ * a service account that works.
+ */
+function driveCredentials(): { clientEmail: string; privateKey: string } | null {
   const clientEmail = process.env.GOOGLE_DRIVE_CLIENT_EMAIL?.trim()
   const rawKey = process.env.GOOGLE_DRIVE_PRIVATE_KEY
-  const rootFolderId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim()
 
-  if (!clientEmail || !rawKey || !rootFolderId) return null
+  if (!clientEmail || !rawKey) return null
 
   /**
    * Service-account keys are multi-line PEM. Most secret stores and .env parsers cannot carry a
@@ -102,11 +125,24 @@ export function driveConfig(): {
     .replace(/^["']|["']$/g, "")
     .replace(/\\n/g, "\n")
 
-  return { clientEmail, privateKey, rootFolderId }
+  return { clientEmail, privateKey }
 }
 
-export function isDriveConfigured(): boolean {
-  return driveConfig() !== null
+export function driveConfig(workspace: DriveWorkspace = "pranajiva"): {
+  clientEmail: string
+  privateKey: string
+  rootFolderId: string
+} | null {
+  const credentials = driveCredentials()
+  const rootFolderId = process.env[ROOT_FOLDER_ENV[workspace]]?.trim()
+
+  if (!credentials || !rootFolderId) return null
+
+  return { ...credentials, rootFolderId }
+}
+
+export function isDriveConfigured(workspace: DriveWorkspace = "pranajiva"): boolean {
+  return driveConfig(workspace) !== null
 }
 
 /**
@@ -119,10 +155,10 @@ export function isDriveConfigured(): boolean {
 let cachedToken: { token: string; expiresAt: number } | null = null
 
 async function getAccessToken(): Promise<string> {
-  const config = driveConfig()
+  const config = driveCredentials()
   if (!config) {
     throw new GoogleDriveError(
-      "Google Drive is not configured — set GOOGLE_DRIVE_CLIENT_EMAIL, GOOGLE_DRIVE_PRIVATE_KEY and GOOGLE_DRIVE_ROOT_FOLDER_ID"
+      "Google Drive is not configured — set GOOGLE_DRIVE_CLIENT_EMAIL and GOOGLE_DRIVE_PRIVATE_KEY"
     )
   }
 
@@ -235,8 +271,10 @@ async function listChildren(folderId: string): Promise<RawFile[]> {
 }
 
 /** Every subfolder of the root — one per research pipeline. */
-export async function listPipelines(): Promise<DriveFolder[]> {
-  const config = driveConfig()
+export async function listPipelines(
+  workspace: DriveWorkspace = "pranajiva"
+): Promise<DriveFolder[]> {
+  const config = driveConfig(workspace)
   if (!config) return []
 
   const children = await listChildren(config.rootFolderId)
@@ -332,18 +370,28 @@ async function walkTree(rootFolderId: string): Promise<DriveTree> {
  * the right lifetime for a cache of somebody else's data.
  */
 const TREE_TTL_MS = 60_000
-let cachedTree: { tree: DriveTree; expiresAt: number } | null = null
 
-export async function getDriveTree(force = false): Promise<DriveTree> {
-  const config = driveConfig()
+/**
+ * Keyed by workspace, because the two roots are walked independently and one being warm says nothing
+ * about the other. A single slot would have the CrossFriend page evicting the Pranajiva tree on every
+ * visit and back again — two caches that each never hit.
+ */
+const treeCache = new Map<DriveWorkspace, { tree: DriveTree; expiresAt: number }>()
+
+export async function getDriveTree(
+  workspace: DriveWorkspace = "pranajiva",
+  force = false
+): Promise<DriveTree> {
+  const config = driveConfig(workspace)
   if (!config) return { pipelines: [], documents: [], folders: [], truncated: false }
 
-  if (!force && cachedTree && Date.now() < cachedTree.expiresAt) {
-    return cachedTree.tree
+  const cached = treeCache.get(workspace)
+  if (!force && cached && Date.now() < cached.expiresAt) {
+    return cached.tree
   }
 
   const tree = await walkTree(config.rootFolderId)
-  cachedTree = { tree, expiresAt: Date.now() + TREE_TTL_MS }
+  treeCache.set(workspace, { tree, expiresAt: Date.now() + TREE_TTL_MS })
   return tree
 }
 

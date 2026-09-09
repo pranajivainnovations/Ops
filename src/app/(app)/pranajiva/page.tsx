@@ -11,7 +11,7 @@ import {
 } from "@/lib/pranajiva/knowledge-base"
 import { SectionHeader, StatCard } from "./_components/section"
 import { DriveErrorPanel, MigrationPendingPanel, SetupPanel } from "./_components/setup"
-import { relativeTime } from "./format"
+import { relativeTime } from "../_components/drive-format"
 
 /**
  * The Pranajiva research overview.

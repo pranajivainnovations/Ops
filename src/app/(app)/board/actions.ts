@@ -5,7 +5,11 @@ import { redirect } from "next/navigation"
 
 import { getCurrentSession } from "@/lib/auth"
 import { getDbPool } from "@/lib/db"
+import { fetchLinkPreview, firstUrl } from "@/lib/link-preview"
 import { notifyTeam } from "@/lib/push"
+import { uploadBoardImage } from "@/lib/s3"
+
+import { attachmentsSchemaReady } from "./data"
 
 /**
  * Writing to the team board.
@@ -37,8 +41,42 @@ export async function postMessage(formData: FormData): Promise<void> {
   const userId = await requireUser()
   const body = str(formData, "body")
 
-  if (!body) fail("Write something first.")
   if (body.length > MAX_BODY) fail(`Messages are limited to ${MAX_BODY} characters.`)
+
+  /**
+   * Attachments only once their columns exist.
+   *
+   * Between this code deploying and AddBoardAttachments running, an INSERT naming image_url would
+   * fail and the board would refuse every message. Checking first means the worst case in that
+   * window is a photo that does not send, with the text still going through.
+   */
+  const canAttach = await attachmentsSchemaReady()
+
+  let imageUrl: string | null = null
+  const file = formData.get("image")
+  if (canAttach && file instanceof File && file.size > 0) {
+    try {
+      const uploaded = await uploadBoardImage(Buffer.from(await file.arrayBuffer()), file.type)
+      imageUrl = uploaded.url
+    } catch (error) {
+      fail(error instanceof Error ? error.message : "Could not upload that image.")
+    }
+  }
+
+  // A photo with no caption is an ordinary message; nothing at all is not.
+  if (!body && !imageUrl) fail("Write something, or attach an image.")
+
+  /**
+   * The link card is read once, here, and stored — see the migration for why not at render time.
+   *
+   * Never allowed to fail the post: a site that is slow, down, or blocking us costs the message its
+   * preview and nothing else. The link is still in the text either way.
+   */
+  let preview: Awaited<ReturnType<typeof fetchLinkPreview>> = null
+  if (canAttach) {
+    const url = firstUrl(body)
+    if (url) preview = await fetchLinkPreview(url).catch(() => null)
+  }
 
   // Marking as a task at post time is a convenience, not the only route — anything can be marked
   // later, which is the point of storing both in one row.
@@ -46,11 +84,29 @@ export async function postMessage(formData: FormData): Promise<void> {
   const assignee = str(formData, "assignee_id") || null
   const dueOn = str(formData, "due_on") || null
 
-  await getDbPool().query(
-    `INSERT INTO crossfriend.team_messages (author_id, body, is_task, assignee_id, due_on)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [userId, body, isTask, isTask ? assignee : null, isTask ? dueOn : null]
-  )
+  if (canAttach) {
+    await getDbPool().query(
+      `INSERT INTO crossfriend.team_messages
+         (author_id, body, is_task, assignee_id, due_on,
+          image_url, link_url, link_title, link_description, link_image_url, link_site)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [
+        userId, body, isTask, isTask ? assignee : null, isTask ? dueOn : null,
+        imageUrl,
+        preview?.url ?? null,
+        preview?.title ?? null,
+        preview?.description ?? null,
+        preview?.imageUrl ?? null,
+        preview?.siteName ?? null,
+      ]
+    )
+  } else {
+    await getDbPool().query(
+      `INSERT INTO crossfriend.team_messages (author_id, body, is_task, assignee_id, due_on)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userId, body, isTask, isTask ? assignee : null, isTask ? dueOn : null]
+    )
+  }
 
   /**
    * Notify after the write, never before, and never in a way that can fail the post.
@@ -68,24 +124,26 @@ export async function postMessage(formData: FormData): Promise<void> {
 
   // A one-line preview. The whole message could be anything up to 4,000 characters, and a
   // notification is a doorway, not the room.
-  const preview = body.length > 120 ? `${body.slice(0, 117)}…` : body
+  const notificationText = body || "sent an image"
+  const notificationPreview =
+    notificationText.length > 120 ? `${notificationText.slice(0, 117)}…` : notificationText
 
   if (isTask && assignee && assignee !== userId) {
     // Assigned work is addressed to one person, so it is worth interrupting them specifically —
     // and it says so, rather than looking like any other message.
     await notifyTeam(
-      { title: `${author} assigned you a task`, body: preview, url: "/board?view=tasks", tag: "ops-task" },
+      { title: `${author} assigned you a task`, body: notificationPreview, url: "/board?view=tasks", tag: "ops-task" },
       { onlyUserId: assignee }
     )
     await notifyTeam(
-      { title: `${author} added a task`, body: preview, url: "/board", tag: "ops-board" },
+      { title: `${author} added a task`, body: notificationPreview, url: "/board", tag: "ops-board" },
       { exceptUserId: userId }
     )
   } else {
     await notifyTeam(
       {
         title: isTask ? `${author} added a task` : `${author} posted`,
-        body: preview,
+        body: notificationPreview,
         url: "/board",
         tag: "ops-board",
       },
