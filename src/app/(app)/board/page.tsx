@@ -2,7 +2,17 @@ import Link from "next/link"
 
 import { getCurrentSession } from "@/lib/auth"
 import { assignTask, deleteMessage, postMessage, toggleDone, toggleTask } from "./actions"
-import { boardSchemaReady, loadBoard, loadTeam, type BoardMessage, type TeamMember } from "./data"
+import {
+  boardSchemaReady,
+  loadBoard,
+  loadTeam,
+  markBoardSeen,
+  pushSchemaReady,
+  type BoardMessage,
+  type TeamMember,
+} from "./data"
+import EnableNotifications from "./enable-notifications"
+import { pushConfig } from "@/lib/push"
 
 /**
  * The team board — one shared thread, where anything written can become a task.
@@ -51,11 +61,30 @@ export default async function BoardPage({
     )
   }
 
-  const [messages, team, session] = await Promise.all([
+  const [messages, team, session, pushReady] = await Promise.all([
     loadBoard(),
     loadTeam(),
     getCurrentSession(),
+    pushSchemaReady(),
   ])
+
+  /**
+   * Opening the board is what marks it read.
+   *
+   * Deliberately after the messages are loaded, so the count the person sees on arrival still
+   * reflects what was new when they clicked — marking first would zero the badge before they had a
+   * chance to see why it was there.
+   *
+   * Not awaited into the render path and never allowed to throw: failing to record a read is not a
+   * reason to fail the page they are trying to look at.
+   */
+  if (pushReady && session?.userId) {
+    void markBoardSeen(session.userId).catch(() => {})
+  }
+
+  /* The public key is read on the server and handed down as a prop. See lib/push.ts for why it is
+     not a NEXT_PUBLIC_ variable — that mistake has already cost two deploys in this project. */
+  const vapidPublicKey = pushConfig()?.publicKey ?? null
 
   const openTasks = messages.filter((m) => m.isTask && !m.isDone && !m.deletedAt)
   const shown = view === "tasks" ? messages.filter((m) => m.isTask && !m.deletedAt) : messages
@@ -67,6 +96,8 @@ export default async function BoardPage({
           {params.error}
         </p>
       )}
+
+      {pushReady && <EnableNotifications publicKey={vapidPublicKey} />}
 
       {/* The thread. Oldest at the top, newest at the bottom — the direction a conversation runs. */}
       <div className="flex flex-col gap-1">

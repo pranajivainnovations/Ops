@@ -113,6 +113,7 @@ const BRANDS: Brand[] = [
         items: [
           { href: "/board", label: "Team board", icon: "docs" },
           { href: "/team", label: "Team", icon: "users" },
+          { href: "/announcements", label: "Announcements", icon: "message" },
           { href: "/settings", label: "Site details", icon: "phone" },
           { href: "/messaging", label: "Messaging", icon: "message", exact: true },
           { href: "/messaging/attempts", label: "Sign-in attempts", icon: "receipt" },
@@ -247,11 +248,14 @@ function NavLink({
   pathname,
   onNavigate,
   accent,
+  badge,
 }: {
   item: NavItem
   pathname: string
   onNavigate: () => void
   accent: Accent
+  /** Unread count. Rendered only when above zero — a "0" badge is worse than none. */
+  badge?: number
 }) {
   const active = item.exact
     ? pathname === item.href
@@ -276,7 +280,12 @@ function NavLink({
       >
         <NavIcon name={item.icon ?? "help"} />
       </span>
-      {item.label}
+      <span className="flex-1 truncate">{item.label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="shrink-0 rounded-full bg-violet-600 px-1.5 text-[10px] font-bold leading-4 text-white">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
     </Link>
   )
 }
@@ -327,7 +336,14 @@ function BrandSwitch({
   )
 }
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({
+  children,
+  boardUnread = 0,
+}: {
+  children: React.ReactNode
+  /** Messages on the team board since this person last opened it. Zero hides the badge. */
+  boardUnread?: number
+}) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
   const brand = brandForPath(pathname)
@@ -408,6 +424,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     pathname={pathname}
                     accent={group.accent}
                     onNavigate={close}
+                    badge={item.href === "/board" ? boardUnread : undefined}
                   />
                 ))}
               </div>

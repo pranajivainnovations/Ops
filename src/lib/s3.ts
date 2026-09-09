@@ -92,3 +92,40 @@ export async function uploadBakerImage(
 
   return { s3Key, url: buildPublicUrl(s3Key) }
 }
+
+/**
+ * Uploads the image on a site-wide announcement.
+ *
+ * Its own function rather than a reused baker upload because the key prefix is what makes an object
+ * findable later — an announcement banner filed under `bakers-images/` is a thing nobody will ever
+ * locate again, and these are published to every visitor on the site.
+ *
+ * Same validation as above, and the same reasoning: only signed-in ops staff can reach this.
+ */
+export async function uploadAnnouncementImage(
+  buffer: Buffer,
+  mimeType: string
+): Promise<BakerImageUploadResult> {
+  if (buffer.length === 0) throw new Error("Uploaded file is empty.")
+  if (buffer.length > MAX_BAKER_IMAGE_BYTES) {
+    throw new Error(`Image must be under ${MAX_BAKER_IMAGE_BYTES / (1024 * 1024)}MB.`)
+  }
+  const extension = EXTENSION_BY_MIME[mimeType]
+  if (!extension) throw new Error("File must be a JPEG, PNG, or WEBP image.")
+
+  const s3Key = `announcements/${crypto.randomUUID()}.${extension}`
+
+  const client = getS3Client()
+  await client.send(
+    new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET || "pranajiva-innovations",
+      Key: s3Key,
+      Body: buffer,
+      ContentType: mimeType,
+      CacheControl: "public, max-age=31536000, immutable",
+      ACL: "public-read",
+    })
+  )
+
+  return { s3Key, url: buildPublicUrl(s3Key) }
+}

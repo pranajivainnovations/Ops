@@ -103,3 +103,42 @@ export async function loadTeam(): Promise<TeamMember[]> {
   )
   return rows.map((r) => ({ id: r.id, name: r.name }))
 }
+
+/**
+ * How many messages have arrived since this person last opened the board.
+ *
+ * Own messages are excluded — being told about your own typing is the fastest route to a badge
+ * everybody learns to ignore. Someone who has never opened the board has no row, and rather than
+ * showing them every message ever written, the count starts from their first visit: a first-day
+ * badge reading "412" is noise, not a welcome.
+ */
+export async function unreadCount(userId: string): Promise<number> {
+  const { rows } = await getDbPool().query<{ n: number }>(
+    `SELECT count(*)::int AS n
+       FROM crossfriend.team_messages m
+       JOIN crossfriend.team_board_reads r ON r.user_id = $1
+      WHERE m.created_at > r.last_seen_at
+        AND m.author_id IS DISTINCT FROM $1
+        AND m.deleted_at IS NULL`,
+    [userId]
+  )
+  return rows[0]?.n ?? 0
+}
+
+/** Records that this person has now seen the board. Called when the page renders. */
+export async function markBoardSeen(userId: string): Promise<void> {
+  await getDbPool().query(
+    `INSERT INTO crossfriend.team_board_reads (user_id, last_seen_at)
+     VALUES ($1, NOW())
+     ON CONFLICT (user_id) DO UPDATE SET last_seen_at = NOW()`,
+    [userId]
+  )
+}
+
+/** True when the push tables exist, so the board can degrade rather than error before migration. */
+export async function pushSchemaReady(): Promise<boolean> {
+  const { rows } = await getDbPool().query<{ ready: boolean }>(
+    `SELECT to_regclass('crossfriend.team_board_reads') IS NOT NULL AS ready`
+  )
+  return Boolean(rows[0]?.ready)
+}
