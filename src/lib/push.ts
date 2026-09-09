@@ -148,3 +148,114 @@ export async function notifyTeam(
     console.error("[push] could not notify", error)
   }
 }
+
+/**
+ * The customer audience.
+ *
+ * ── Why this is a separate function and not notifyTeam with a flag ─────────────────────────────
+ * They share the transport and nothing else. The team send excludes the person who caused it, is
+ * triggered automatically by something happening, and reaches five known accounts. This one is
+ * triggered by a person deciding to press send, reaches an unbounded list of strangers, and has to
+ * report what it did — because a campaign that half-sent and said nothing is indistinguishable from
+ * one that worked. A shared function with a flag would be two functions sharing a name.
+ */
+
+/**
+ * How many pushes are in flight at once.
+ *
+ * Everything at once would be one line of code and would open thousands of simultaneous TLS
+ * connections from a small container, which is how a send takes the site down with it. Batched, a
+ * campaign to thirty thousand devices is three hundred rounds of a hundred — a few seconds, and
+ * flat memory.
+ */
+const SEND_BATCH = 100
+
+export interface BroadcastResult {
+  sent: number
+  failed: number
+  /** Subscriptions the push service reported as gone, and which are now retired. */
+  retired: number
+}
+
+/**
+ * Send one campaign to every live subscriber.
+ *
+ * Unlike notifyTeam this reports rather than swallowing, because the caller is a person watching a
+ * screen who needs to know what happened. It still never throws for a delivery failure — dead
+ * endpoints are the normal state of a push list, not an error.
+ */
+export async function notifySubscribers(payload: PushPayload & { image?: string }): Promise<BroadcastResult> {
+  const config = pushConfig()
+  if (!config) return { sent: 0, failed: 0, retired: 0 }
+
+  webpush.setVapidDetails(config.subject, config.publicKey, config.privateKey)
+
+  const { rows } = await getDbPool().query(
+    `SELECT id, endpoint, p256dh, auth
+       FROM crossfriend.push_subscribers
+      WHERE failed_at IS NULL AND revoked_at IS NULL`
+  )
+
+  if (rows.length === 0) return { sent: 0, failed: 0, retired: 0 }
+
+  const body = JSON.stringify(payload)
+  const delivered: string[] = []
+  const dead: string[] = []
+  let failed = 0
+
+  for (let start = 0; start < rows.length; start += SEND_BATCH) {
+    const batch = rows.slice(start, start + SEND_BATCH)
+
+    const results = await Promise.allSettled(
+      batch.map((row) =>
+        webpush.sendNotification(
+          { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
+          body,
+          /* Two days. A team notification is worthless once the moment passes, but an offer is still
+             an offer when somebody opens their laptop on Monday. */
+          { TTL: 60 * 60 * 48 }
+        )
+      )
+    )
+
+    results.forEach((result, index) => {
+      const id = batch[index].id
+      if (result.status === "fulfilled") {
+        delivered.push(id)
+        return
+      }
+      failed += 1
+      // 404 and 410 are the push protocol's "this subscription no longer exists". Anything else — a
+      // timeout, a 500 from the push service — is transient and must not retire a live device.
+      const status = (result.reason as { statusCode?: number })?.statusCode
+      if (status === 404 || status === 410) dead.push(id)
+    })
+  }
+
+  /* Recorded after the whole send rather than per batch: two statements instead of six hundred, and
+     a crash mid-campaign leaves the list untouched rather than half-annotated. */
+  if (delivered.length > 0) {
+    await getDbPool().query(
+      `UPDATE crossfriend.push_subscribers SET last_sent_at = NOW() WHERE id = ANY($1::uuid[])`,
+      [delivered]
+    )
+  }
+  if (dead.length > 0) {
+    await getDbPool().query(
+      `UPDATE crossfriend.push_subscribers
+          SET failed_at = NOW(), failure_count = failure_count + 1
+        WHERE id = ANY($1::uuid[])`,
+      [dead]
+    )
+  }
+
+  return { sent: delivered.length, failed, retired: dead.length }
+}
+
+/** True when the customer push tables exist, so the page can say so instead of erroring. */
+export async function broadcastSchemaReady(): Promise<boolean> {
+  const { rows } = await getDbPool().query<{ ready: boolean }>(
+    `SELECT to_regclass('crossfriend.push_subscribers') IS NOT NULL AS ready`
+  )
+  return Boolean(rows[0]?.ready)
+}
