@@ -101,6 +101,9 @@ const BRANDS: Brand[] = [
         accent: "teal",
         items: [
           { href: "/rnd", label: "R&D", icon: "flask" },
+          // The Sanity Studio for crossfriend.in/knowledge. Sits with R&D and Search & AI because
+          // it is the same loop: research a topic, publish on it, watch whether it gets found.
+          { href: "/knowledge", label: "Knowledge", icon: "docs" },
           { href: "/documents", label: "Documents", icon: "docs" },
           { href: "/designs", label: "AI Designs", icon: "image" },
           { href: "/seo", label: "Search & AI", icon: "search" },
@@ -138,6 +141,8 @@ const BRANDS: Brand[] = [
           { href: "/pranajiva", label: "Overview", icon: "leaf", exact: true },
           { href: "/pranajiva/run-card", label: "Running a topic", icon: "docs" },
           { href: "/pranajiva/content", label: "Content pipeline", icon: "docs" },
+          // The Sanity Studio for pranajiva.in/knowledge — where the pipeline above ends up.
+          { href: "/pranajiva/knowledge", label: "Knowledge articles", icon: "docs" },
           { href: "/pranajiva/formulas", label: "Formulas", icon: "flask" },
           { href: "/pranajiva/topics", label: "Content topics", icon: "docs" },
           { href: "/pranajiva/products", label: "Product concepts", icon: "tag" },
