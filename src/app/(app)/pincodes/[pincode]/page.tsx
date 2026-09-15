@@ -7,6 +7,7 @@ import DiscoveryTrigger from "./discovery-trigger"
 import AddByLink from "./add-by-link"
 import WebsiteCell from "../../_components/website-cell"
 import BackLink from "../../_components/back-link"
+import RewardsPanel from "./rewards-panel"
 
 export const dynamic = "force-dynamic"
 
@@ -310,6 +311,14 @@ export default async function PincodeDetailPage({
           })}
         </div>
       )}
+
+      {/* What this pincode is offering. Placed after the baker list on purpose: the reward settings
+          mean nothing until somebody can actually deliver there, and the readiness bar above is the
+          thing that decides whether any of this serves. */}
+      <div className="mt-8">
+        <RewardsPanel pincode={pincode} />
+      </div>
+
     </div>
   )
 }

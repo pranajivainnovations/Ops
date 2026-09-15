@@ -145,3 +145,27 @@ Do not edit by hand, and do not delete — it is the only record of what is live
 - image:   pranajiva-ops:latest
 - target:  ubuntu@13.62.195.167:/home/ubuntu/pranajiva-ops
 - by:      crossfriend2025
+---
+- when:    2026-09-11 03:35:27 UTC  /  2026-09-11 09:05 IST
+- outcome: SUCCESS
+- commit:  5c953a2 (main)
+- tree:    clean
+- image:   pranajiva-ops:latest
+- target:  ubuntu@13.62.195.167:/home/ubuntu/pranajiva-ops
+- by:      crossfriend2025
+---
+- when:    2026-09-15 09:11:21 UTC  /  2026-09-15 14:41 IST
+- outcome: SUCCESS
+- commit:  8f2fefb (main)
+- tree:    dirty
+- image:   pranajiva-ops:latest
+- target:  ubuntu@13.62.195.167:/home/ubuntu/pranajiva-ops
+- by:      crossfriend2025
+---
+- when:    2026-09-15 14:58:32 UTC  /  2026-09-15 20:28 IST
+- outcome: SUCCESS
+- commit:  8f2fefb (main)
+- tree:    dirty
+- image:   pranajiva-ops:latest
+- target:  ubuntu@13.62.195.167:/home/ubuntu/pranajiva-ops
+- by:      crossfriend2025

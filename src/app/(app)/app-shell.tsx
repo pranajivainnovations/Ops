@@ -85,6 +85,7 @@ const BRANDS: Brand[] = [
           { href: "/orders", label: "Orders", icon: "receipt" },
           { href: "/bakers", label: "Bakers", icon: "store" },
           { href: "/pincodes", label: "Pincodes", icon: "pin" },
+          { href: "/rewards", label: "Rewards", icon: "tag" },
         ],
       },
       {
