@@ -81,6 +81,26 @@ export default async function MessagingPage({
           <div className="mt-4 flex flex-col gap-5">
             {flows.map((flow) => {
               const assigned = templates.find((t) => t.id === flow.templateId)
+
+              /**
+               * Why the flow cannot send, in the backend's own order of checks.
+               *
+               * The save action refuses to switch a flow ON without an active template carrying an
+               * MSG91 id, but it cannot stop a flow from ARRIVING in that state later: deactivating
+               * a template — typically because DLT rejected it — leaves every flow pointing at it
+               * reading "Live" while the send path returns 503. The pill alone would then be
+               * confidently wrong, which is the one thing this page must not be.
+               */
+              const blockedReason = !flow.isEnabled
+                ? null
+                : !assigned
+                  ? "No template is assigned, so nothing can be sent."
+                  : !assigned.isActive
+                    ? "The assigned template is inactive. Reactivate it, or choose another."
+                    : !assigned.providerTemplateId.trim()
+                      ? "The assigned template has no MSG91 template ID."
+                      : null
+
               return (
                 <form
                   key={flow.flowKey}
@@ -109,6 +129,13 @@ export default async function MessagingPage({
                       {flow.isEnabled ? "Live" : "Off"}
                     </span>
                   </div>
+
+                  {blockedReason && (
+                    <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-200">
+                      <strong className="font-semibold">Switched on, but not sending.</strong>{" "}
+                      {blockedReason}
+                    </p>
+                  )}
 
                   <div className="mt-5 grid gap-4 sm:grid-cols-2">
                     <div className="sm:col-span-2">

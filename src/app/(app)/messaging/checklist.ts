@@ -32,8 +32,10 @@ export type AutoSignal =
   | "tablesExist"
   | "templateExists"
   | "templateHasProviderId"
-  | "flowAssigned"
-  | "flowEnabled"
+  | "crossfriendFlowAssigned"
+  | "crossfriendFlowEnabled"
+  | "pranajivaFlowAssigned"
+  | "pranajivaFlowEnabled"
   | "backendRouteLive"
 
 export interface ChecklistGroup {
@@ -53,7 +55,7 @@ export const CHECKLIST: ChecklistGroup[] = [
         kind: "manual",
         label: "Backend issues and verifies OTPs",
         detail:
-          "Redis-backed store, HMAC at rest, timing-safe comparison, attempt cap, cooldown, daily cap. Routes: /store/crossfriend/otp/send and /verify.",
+          "Redis-backed store, HMAC at rest, timing-safe comparison, attempt cap, cooldown, daily cap. Routes: /store/otp/send and /verify, which take a brand. /store/crossfriend/otp/* still answers for the deployed storefront.",
       },
       {
         key: "code_msg91_client",
@@ -255,16 +257,32 @@ export const CHECKLIST: ChecklistGroup[] = [
         label: "Template carries an MSG91 template ID",
       },
       {
-        key: "ops_flow_assigned",
+        key: "ops_flow_assigned_crossfriend",
         kind: "auto",
-        signal: "flowAssigned",
-        label: "AI Studio sign-in points at a template",
+        signal: "crossfriendFlowAssigned",
+        label: "CrossFriend sign-in points at a template",
       },
       {
-        key: "ops_flow_enabled",
+        key: "ops_flow_enabled_crossfriend",
         kind: "auto",
-        signal: "flowEnabled",
-        label: "Flow switched live",
+        signal: "crossfriendFlowEnabled",
+        label: "CrossFriend sign-in switched live",
+      },
+      {
+        key: "ops_flow_assigned_pranajiva",
+        kind: "auto",
+        signal: "pranajivaFlowAssigned",
+        label: "PranaJiva sign-in points at a template",
+        detail:
+          "Assigned by the migration that seeded the flow, from the active template registered under PRANAJ.",
+      },
+      {
+        key: "ops_flow_enabled_pranajiva",
+        kind: "auto",
+        signal: "pranajivaFlowEnabled",
+        label: "PranaJiva sign-in switched live",
+        detail:
+          "Stays pending until you switch it on above. Deliberate — the flow is seeded off so it cannot send before the PranaJiva sign-in screen is deployed.",
       },
     ],
   },

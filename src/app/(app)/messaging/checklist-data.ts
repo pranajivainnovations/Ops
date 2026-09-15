@@ -57,7 +57,7 @@ async function probeBackendRoute(): Promise<SignalState> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 6000)
 
-    const res = await fetch(`${url}/store/crossfriend/otp/send`, {
+    const res = await fetch(`${url}/store/otp/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // A key that can never be in ALLOWED_FLOWS, so the route refuses at its first branch.
@@ -88,23 +88,34 @@ export async function getAutoSignals(): Promise<Record<AutoSignal, SignalState>>
          FROM crossfriend.sms_templates`
     ),
     db.query(
-      `SELECT template_id, is_enabled
-         FROM crossfriend.message_flows
-        WHERE flow_key = 'ai_studio_login'`
+      `SELECT flow_key, template_id, is_enabled
+         FROM crossfriend.message_flows`
     ),
     probeBackendRoute(),
   ])
 
   const tablesExist =
     tables.rows[0]?.templates && tables.rows[0]?.flows ? "done" : "pending"
-  const flowRow = flow.rows[0]
+
+  /* A flow the query did not return is not the same as one that is unconfigured — it means the
+     migration that seeds it has not been applied here. Both read "pending", which is the honest
+     answer for a checklist: the thing is not ready, and the row above it says which thing. */
+  const byKey = new Map<string, { template_id: string | null; is_enabled: boolean }>(
+    flow.rows.map((r) => [r.flow_key, r])
+  )
+  const assigned = (key: string): SignalState =>
+    byKey.get(key)?.template_id ? "done" : "pending"
+  const enabled = (key: string): SignalState =>
+    byKey.get(key)?.is_enabled === true ? "done" : "pending"
 
   return {
     tablesExist,
     templateExists: templates.rows[0].total > 0 ? "done" : "pending",
     templateHasProviderId: templates.rows[0].usable > 0 ? "done" : "pending",
-    flowAssigned: flowRow?.template_id ? "done" : "pending",
-    flowEnabled: flowRow?.is_enabled === true ? "done" : "pending",
+    crossfriendFlowAssigned: assigned("ai_studio_login"),
+    crossfriendFlowEnabled: enabled("ai_studio_login"),
+    pranajivaFlowAssigned: assigned("pranajiva_login"),
+    pranajivaFlowEnabled: enabled("pranajiva_login"),
     backendRouteLive: backendRoute,
   }
 }
