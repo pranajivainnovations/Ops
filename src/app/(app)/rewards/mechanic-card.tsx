@@ -2,7 +2,8 @@
 
 import { useActionState } from "react"
 
-import { saveRewardConfig, EMPTY_SAVE_STATE } from "./actions"
+import { saveRewardConfig } from "./actions"
+import { EMPTY_SAVE_STATE } from "./action-types"
 import {
   formatValue,
   isMoneyControl,

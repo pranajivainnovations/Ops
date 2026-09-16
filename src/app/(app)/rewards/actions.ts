@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { getCurrentSession } from "@/lib/auth"
+import { EMPTY_SAVE_STATE, type SaveState } from "./action-types"
 
 /**
  * Writes go to the backend, never straight to the database.
@@ -13,14 +14,6 @@ import { getCurrentSession } from "@/lib/auth"
  * settings next to the one that checks them, and the quiet one always wins eventually.
  */
 
-export interface SaveState {
-  ok: boolean
-  error: string | null
-  blocks: string[]
-  warnings: string[]
-}
-
-export const EMPTY_SAVE_STATE: SaveState = { ok: false, error: null, blocks: [], warnings: [] }
 
 type Backend = { url: string; key: string }
 

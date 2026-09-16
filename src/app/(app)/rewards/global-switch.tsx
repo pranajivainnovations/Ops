@@ -2,7 +2,8 @@
 
 import { useActionState } from "react"
 
-import { setGlobalSwitch, EMPTY_SAVE_STATE } from "./actions"
+import { setGlobalSwitch } from "./actions"
+import { EMPTY_SAVE_STATE } from "./action-types"
 import { isError, type GlobalSwitch } from "./types"
 
 /**
