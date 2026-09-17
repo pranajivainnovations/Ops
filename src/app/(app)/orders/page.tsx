@@ -1,5 +1,6 @@
 import { getDbPool } from "@/lib/db"
 import { assignBakerFromOrder } from "./actions"
+import StatusControl from "./status-control"
 
 export const dynamic = "force-dynamic"
 
@@ -103,7 +104,8 @@ export default async function OrdersPage({
   searchParams: Promise<{ filter?: string }>
 }) {
   const { filter } = await searchParams
-  const view = filter === "open" || filter === "unassigned" ? filter : "all"
+  const view =
+    filter === "open" || filter === "unassigned" || filter === "to_deliver" ? filter : "all"
   const db = getDbPool()
 
   // NULLIF guards the metadata path: an empty-string bakerId is not a baker and would otherwise be
@@ -184,17 +186,31 @@ export default async function OrdersPage({
     )
   ).rows
 
+  /**
+   * Waiting on us, not on a baker.
+   *
+   * CrossFriend owns delivery. A baker's job finishes when the cake is ready; from that point the
+   * order is ours to move, and this is the queue of orders in exactly that state. It is a filter
+   * rather than a separate screen because the decision needs the address and the rest of the order
+   * beside it, which is what this page already shows.
+   */
+  const toDeliver = (o: (typeof all)[number]) =>
+    o.bakers.some((b) => b.status === "ready")
+
   const orders =
     view === "open"
       ? all.filter((o) => o.bakers.some((b) => !CLOSED.includes(b.status)))
       : view === "unassigned"
         ? all.filter((o) => o.awaiting.length > 0)
-        : all
+        : view === "to_deliver"
+          ? all.filter(toDeliver)
+          : all
 
   const counts = {
     all: all.length,
     open: all.filter((o) => o.bakers.some((b) => !CLOSED.includes(b.status))).length,
     unassigned: all.filter((o) => o.awaiting.length > 0).length,
+    to_deliver: all.filter(toDeliver).length,
   }
 
   const tab = (key: string, label: string, n: number) => (
@@ -226,6 +242,9 @@ export default async function OrdersPage({
           {/* Flow 3: the customer left the choice to CrossFriend. Nothing happens on these until
               someone here picks a bakery, so this is the one tab that represents work. */}
           {counts.unassigned > 0 && tab("unassigned", "Needs a baker", counts.unassigned)}
+          {/* The other tab that represents work, and the reason it is work: delivery is CrossFriend's,
+              not the bakery's. A cake sitting in "Ready" is waiting on us. */}
+          {counts.to_deliver > 0 && tab("to_deliver", "To deliver", counts.to_deliver)}
         </div>
 
         {orders.length === 0 ? (
@@ -294,19 +313,31 @@ export default async function OrdersPage({
                       </span>
                     ) : (
                       o.bakers.map((b) => (
-                        <a
+                        /* The baker link and the state control are siblings rather than nested: a
+                           form inside an anchor is invalid, and every click on the select would
+                           otherwise navigate away mid-change. */
+                        <span
                           key={b.bakerId}
-                          href={`/bakers/${b.bakerId}`}
-                          className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:bg-slate-50"
+                          className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1 text-xs"
                         >
-                          <span className="font-semibold text-slate-800">{b.bakerName}</span>
-                          <span className={`rounded px-1.5 py-0.5 font-bold ${STATUS[b.status].chip}`}>
-                            {STATUS[b.status].label}
-                          </span>
-                          <span className="text-slate-400">
-                            {b.itemCount} item{b.itemCount === 1 ? "" : "s"}
-                          </span>
-                        </a>
+                          <a
+                            href={`/bakers/${b.bakerId}`}
+                            className="flex items-center gap-2 hover:underline"
+                          >
+                            <span className="font-semibold text-slate-800">{b.bakerName}</span>
+                            <span className={`rounded px-1.5 py-0.5 font-bold ${STATUS[b.status].chip}`}>
+                              {STATUS[b.status].label}
+                            </span>
+                            <span className="text-slate-400">
+                              {b.itemCount} item{b.itemCount === 1 ? "" : "s"}
+                            </span>
+                          </a>
+                          <StatusControl
+                            orderId={o.id}
+                            bakerId={b.bakerId}
+                            current={b.status}
+                          />
+                        </span>
                       ))
                     )}
 
