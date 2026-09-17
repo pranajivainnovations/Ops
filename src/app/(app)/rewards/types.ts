@@ -38,6 +38,12 @@ export interface EffectiveConfig {
   endsAt: string | null
   maxGrants: number | null
   budgetPaise: number | null
+  /**
+   * Where a brand-level offer runs. Always the brand row's answer, never a pincode row's — a pincode
+   * row is about one pincode and carries no list.
+   */
+  scopeMode: "all" | "selected" | null
+  scopePincodes: string[] | null
   params: Record<string, number | boolean>
   note: string | null
   brandVersion: number | null
@@ -159,4 +165,18 @@ export interface PincodeOutcomes {
     customers: number
   }
   unavailable: string[]
+}
+
+/**
+ * A pincode an offer could be switched on in, with how ready it is today.
+ *
+ * Lives here rather than beside the query that produces it because the scope picker is a client
+ * component, and a client component may not reach into a module marked server-only. A type-only
+ * import is erased and would survive, but this repo has already been caught once by something that
+ * compiled and built and still broke at render — shared shapes go in shared files.
+ */
+export interface ScopeCandidate {
+  pincode: string
+  district: string | null
+  readyBakers: number
 }

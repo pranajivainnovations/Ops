@@ -1,5 +1,8 @@
 import "server-only"
 
+import { getDbPool } from "@/lib/db"
+import type { ScopeCandidate } from "./types"
+
 /**
  * Reads the reward configuration from the backend rather than from the database.
  *
@@ -127,4 +130,41 @@ export async function getPincodeOutcomes(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "The backend is unreachable." }
   }
+}
+
+/**
+ * The pincodes an offer could be switched on in — those trading, with how ready each one is.
+ *
+ * ── Why readiness is shown beside the choice ───────────────────────────────────────────────────
+ * Selecting a pincode that has fewer than three bakers with a published product produces an offer
+ * that is switched on and serves nobody, and the screen would look exactly like one that works. The
+ * count is fetched with the list so the choice is made knowing which ones are real today — without
+ * preventing the choice, because selecting a pincode that goes live next week is a legitimate thing
+ * to want.
+ *
+ * Read straight from the database rather than through the backend: OPS already owns this connection
+ * and there is no decision here for the reward engine to make, only a list to draw.
+ */
+export async function getScopeCandidates(): Promise<ScopeCandidate[]> {
+  const db = getDbPool()
+  const { rows } = await db.query(
+    `SELECT pss.pincode,
+            (SELECT MIN(district) FROM baker_network.pincode_directory pd
+              WHERE pd.pincode = pss.pincode) AS district,
+            (SELECT COUNT(DISTINCT b.id)::int
+               FROM baker_network.bakers b
+              WHERE b.pincode = pss.pincode
+                AND b.is_active AND b.is_public
+                AND EXISTS (SELECT 1 FROM baker_network.baker_products p
+                             WHERE p.baker_id = b.id AND p.publication_state = 'published')
+            ) AS ready_bakers
+       FROM baker_network.pincode_service_status pss
+      WHERE pss.service_enabled = true
+      ORDER BY pss.pincode`
+  )
+  return rows.map((r) => ({
+    pincode: r.pincode as string,
+    district: (r.district ?? null) as string | null,
+    readyBakers: Number(r.ready_bakers),
+  }))
 }

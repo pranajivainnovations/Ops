@@ -28,9 +28,13 @@ import {
  * rest of the form to be valid. That is the same rule the backend enforces, made visible: the
  * moment somebody needs to stop paying out is the moment they least need an argument with a form.
  */
+import ScopePicker from "./scope-picker"
+import type { ScopeCandidate } from "./types"
+
 export default function MechanicCard({
   brand,
   pincode,
+  scopeCandidates,
   mechanic,
   config,
   fields,
@@ -38,6 +42,7 @@ export default function MechanicCard({
 }: {
   brand: string
   pincode: string | null
+  scopeCandidates?: ScopeCandidate[]
   mechanic: Mechanic
   config: EffectiveConfig | null
   fields: FieldSpec[]
@@ -99,6 +104,21 @@ export default function MechanicCard({
           already promised by a first still arrives. What you owe does not change today — see the
           outstanding figure above.
         </p>
+      )}
+
+      {/**
+        * Only at brand scope, and never for economics.
+        *
+        * A pincode row is already about one pincode — the database refuses a scope on one — and
+        * economics is the brand's numbers rather than an offer that runs anywhere. Showing the
+        * picker in either place would offer a choice that cannot be saved.
+        */}
+      {mechanic !== "economics" && pincode === null && (
+        <ScopePicker
+          scopeMode={config?.scopeMode ?? null}
+          scopePincodes={config?.scopePincodes ?? null}
+          candidates={scopeCandidates ?? []}
+        />
       )}
 
       {mechanic !== "economics" && (

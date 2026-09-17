@@ -146,6 +146,21 @@ export async function saveRewardConfig(
         endsAt,
         maxGrants: intFrom(formData, "maxGrants"),
         budgetPaise: paiseFrom(formData, "budgetPaise"),
+        /**
+         * Sent only when the form actually carried a scope — which is brand scope on a serving
+         * mechanic, and nowhere else. Undefined means "unchanged" to the backend, so a pincode
+         * override save cannot alter the brand's list, and an edit from a screen without the picker
+         * cannot silently widen an offer.
+         *
+         * getAll rather than get: the picker is a set of checkboxes sharing one name, and get()
+         * would take the first ticked box and quietly drop the rest.
+         */
+        ...(formData.get("scopeMode")
+          ? {
+              scopeMode: String(formData.get("scopeMode")),
+              scopePincodes: formData.getAll("scopePincodes").map(String),
+            }
+          : {}),
         params,
         note,
         opsUserId: session.userId ?? null,

@@ -1,4 +1,4 @@
-import { getGlobalSwitch, getLiability, getRewardScope } from "./data"
+import { getGlobalSwitch, getLiability, getRewardScope, getScopeCandidates } from "./data"
 import { isError, rupees, MECHANIC_LABEL, type Brand, type Mechanic } from "./types"
 import MechanicCard from "./mechanic-card"
 import RewardHistory from "./history"
@@ -34,10 +34,13 @@ export default async function RewardsPage({
   const { brand: brandParam } = await searchParams
   const brand: Brand = brandParam === "pranajiva" ? "pranajiva" : "crossfriend"
 
-  const [scope, liability, globalSwitch] = await Promise.all([
+  const [scope, liability, globalSwitch, scopeCandidates] = await Promise.all([
     getRewardScope(brand, null),
     getLiability(),
     getGlobalSwitch(),
+    /* Never fails the page: a picker with no candidates still renders, and losing the list of
+       pincodes is not a reason to lose the screen that stops an offer. */
+    getScopeCandidates().catch(() => []),
   ])
 
   return (
@@ -83,6 +86,7 @@ export default async function RewardsPage({
               key={mechanic}
               brand={brand}
               pincode={null}
+              scopeCandidates={scopeCandidates}
               mechanic={mechanic}
               config={scope.config[mechanic]}
               fields={scope.fields[mechanic]}
