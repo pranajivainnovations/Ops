@@ -243,6 +243,19 @@ export default function TroubleshootingPage() {
         </p>
       </Section>
 
+      <Section title="Wallet credit not showing, or too little of it">
+        <p className="text-sm leading-relaxed text-slate-700">
+          Credit has its own chapter, because almost every question about it has the same four or five
+          answers — an offer not switched on where the customer is, a customer who never told us their
+          pincode, a per-order limit doing its job, or an order not yet marked delivered. They are all
+          set out in{" "}
+          <Link href="/help/rewards" className="font-semibold text-slate-900 underline">
+            Rewards &amp; wallet
+          </Link>
+          , with what to say on the phone.
+        </p>
+      </Section>
+
       <Section title="Where to look">
         <Table
           head={["Question", "Look in"]}

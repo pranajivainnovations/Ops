@@ -8,10 +8,16 @@
  */
 
 export type Brand = "crossfriend" | "pranajiva"
-export type Mechanic = "economics" | "joining_cash" | "referral" | "cashback"
+export type Mechanic =
+  | "economics"
+  | "signup_bonus"
+  | "joining_cash"
+  | "referral"
+  | "cashback"
 
 export const MECHANIC_LABEL: Record<Mechanic, string> = {
   economics: "Economics",
+  signup_bonus: "Welcome bonus",
   joining_cash: "Joining cash",
   referral: "Referral",
   cashback: "Cashback",

@@ -10,6 +10,7 @@ export const HELP_PAGES = [
   { href: "/help/taxonomy", label: "Taxonomy", blurb: "Occasion × Product Type — what appears where on the storefront" },
   { href: "/help/products", label: "Products", blurb: "Creation, publication, and reaching the marketplace" },
   { href: "/help/storefront", label: "Storefront", blurb: "What customers see and how they buy" },
+  { href: "/help/rewards", label: "Rewards & wallet", blurb: "Customer credit — what gives it, what you control, what to say on the phone" },
   { href: "/help/operations", label: "Operations", blurb: "Daily tasks, setup, secrets, deployment" },
   { href: "/help/seo", label: "Search & SEO", blurb: "Sitemap, robots, Search Console — getting found by Google and AI" },
   { href: "/help/troubleshooting", label: "Troubleshooting", blurb: "Symptoms, causes, where to look" },

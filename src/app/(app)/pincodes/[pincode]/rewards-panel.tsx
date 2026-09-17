@@ -11,6 +11,9 @@ import MechanicCard from "../../rewards/mechanic-card"
 import RewardHistory from "../../rewards/history"
 import PincodeOutcomesPanel from "../../rewards/outcomes"
 
+/* Deliberately without signup_bonus: it pays when somebody joins, and a customer has no pincode
+   until their first order. The database refuses a pincode row for it, so offering the card here
+   would be offering a control whose save can only fail. */
 const MECHANICS: Mechanic[] = ["economics", "joining_cash", "referral", "cashback"]
 
 /**

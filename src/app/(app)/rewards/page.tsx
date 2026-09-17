@@ -6,7 +6,15 @@ import GlobalSwitchPanel from "./global-switch"
 
 export const dynamic = "force-dynamic"
 
-const MECHANICS: Mechanic[] = ["economics", "joining_cash", "referral", "cashback"]
+const MECHANICS: Mechanic[] = [
+  "economics",
+  /* Paid on joining rather than on ordering, so it is brand-wide by nature: a customer has no
+     pincode until their first order, and the database refuses a scope on this one. */
+  "signup_bonus",
+  "joining_cash",
+  "referral",
+  "cashback",
+]
 const BRANDS: Brand[] = ["crossfriend", "pranajiva"]
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -46,7 +54,16 @@ export default async function RewardsPage({
   return (
     <div className="p-6">
       <header className="mb-6">
-        <h1 className="text-xl font-bold text-slate-900">Rewards</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h1 className="text-xl font-bold text-slate-900">Rewards</h1>
+          {/* The one payment no rule on this page covers, kept one click away from the rules. */}
+          <a
+            href="/rewards/grant"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Give a customer credit →
+          </a>
+        </div>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-slate-600">
           Brand defaults for every reward. A pincode inherits these unless it overrides them, so one
           edit here moves everywhere that has not been given its own answer. Nothing is overwritten —
