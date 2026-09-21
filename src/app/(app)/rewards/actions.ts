@@ -97,6 +97,19 @@ export async function saveRewardConfig(
     if (margin !== null) params.gross_margin_bps = margin
     if (cap !== null) params.promo_redemption_cap_bps = cap
     if (aov !== null) params.assumed_aov_paise = aov
+  } else if (mechanic === "signup_bonus") {
+    /**
+     * This branch was missing, and its absence was invisible.
+     *
+     * Without it the welcome bonus built an empty params object: the card rendered, the fields
+     * accepted an amount, and every value was dropped on the way out — so the backend refused the
+     * save for missing the two fields the operator had just filled in. The only mechanic on this
+     * screen that could not be switched on, and the error blamed the person typing.
+     */
+    const amount = paiseFrom(formData, "amount_paise")
+    const expiry = intFrom(formData, "expiry_days")
+    if (amount !== null) params.amount_paise = amount
+    if (expiry !== null) params.expiry_days = expiry
   } else if (mechanic === "joining_cash") {
     const g1 = paiseFrom(formData, "grant_1_paise")
     const g2 = paiseFrom(formData, "grant_2_paise")
@@ -118,6 +131,40 @@ export async function saveRewardConfig(
     if (cap !== null) params.per_order_cap_paise = cap
     if (window !== null) params.window_orders = window
     if (hold !== null) params.hold_days = hold
+  } else if (mechanic === "studio") {
+    const anon = intFrom(formData, "free_anonymous")
+    const signedIn = intFrom(formData, "free_signed_in")
+    const price = paiseFrom(formData, "price_paise")
+    const unitCost = paiseFrom(formData, "unit_cost_paise")
+    if (anon !== null) params.free_anonymous = anon
+    if (signedIn !== null) params.free_signed_in = signedIn
+    if (price !== null) params.price_paise = price
+    if (unitCost !== null) params.unit_cost_paise = unitCost
+    /* Absent means the checkbox was not rendered, not that it was unticked — the same reading every
+       other boolean here uses. */
+    if (formData.get("refund_on_order") !== null) {
+      params.refund_on_order = formData.get("refund_on_order") === "on"
+    }
+    if (formData.get("charge_failed") !== null) {
+      params.charge_failed = formData.get("charge_failed") === "on"
+    }
+
+    /**
+     * Selling compute below what it costs.
+     *
+     * Refused rather than warned: every other guardrail here stops a setting that loses money on
+     * every use, and this is one. A deliberately free tier is what the two allowance fields are for,
+     * and a price of zero is still allowed — what is refused is a price that looks like a charge
+     * while quietly costing more than it collects.
+     */
+    if (price !== null && unitCost !== null && price > 0 && price < unitCost) {
+      return {
+        ...EMPTY_SAVE_STATE,
+        error: `A price of ₹${(price / 100).toFixed(2)} is below the ₹${(unitCost / 100).toFixed(
+          2
+        )} each generation costs, so every paid generation would lose money. Raise the price, or set it to 0 to give them away.`,
+      }
+    }
   } else if (mechanic === "cashback") {
     const rate = bpsFrom(formData, "rate_bps")
     const hold = intFrom(formData, "hold_days")

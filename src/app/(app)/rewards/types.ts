@@ -14,6 +14,7 @@ export type Mechanic =
   | "joining_cash"
   | "referral"
   | "cashback"
+  | "studio"
 
 export const MECHANIC_LABEL: Record<Mechanic, string> = {
   economics: "Economics",
@@ -21,6 +22,7 @@ export const MECHANIC_LABEL: Record<Mechanic, string> = {
   joining_cash: "Joining cash",
   referral: "Referral",
   cashback: "Cashback",
+  studio: "AI Studio",
 }
 
 export interface FieldSpec {

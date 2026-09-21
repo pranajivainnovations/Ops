@@ -8,12 +8,16 @@ export const dynamic = "force-dynamic"
 
 const MECHANICS: Mechanic[] = [
   "economics",
-  /* Paid on joining rather than on ordering, so it is brand-wide by nature: a customer has no
-     pincode until their first order, and the database refuses a scope on this one. */
+  /* Paid on joining rather than on ordering. It was brand-wide by necessity until
+     ScopeSignupBonusToPincodes lifted that restriction — a visitor can now tell us their area before
+     ordering, so this one takes a pincode scope like the rest. */
   "signup_bonus",
   "joining_cash",
   "referral",
   "cashback",
+  /* Pays nobody. It sits here because its numbers are money that has to move without a deploy, and
+     because a second settings screen for the same job is how two of them drift apart. */
+  "studio",
 ]
 const BRANDS: Brand[] = ["crossfriend", "pranajiva"]
 
