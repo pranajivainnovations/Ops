@@ -132,11 +132,10 @@ export async function saveRewardConfig(
     if (window !== null) params.window_orders = window
     if (hold !== null) params.hold_days = hold
   } else if (mechanic === "studio") {
-    const anon = intFrom(formData, "free_anonymous")
+    /* No free_anonymous: generation requires a login, so there is no signed-out allowance to set. */
     const signedIn = intFrom(formData, "free_signed_in")
     const price = paiseFrom(formData, "price_paise")
     const unitCost = paiseFrom(formData, "unit_cost_paise")
-    if (anon !== null) params.free_anonymous = anon
     if (signedIn !== null) params.free_signed_in = signedIn
     if (price !== null) params.price_paise = price
     if (unitCost !== null) params.unit_cost_paise = unitCost

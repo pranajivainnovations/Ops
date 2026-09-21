@@ -107,6 +107,9 @@ const BRANDS: Brand[] = [
           { href: "/knowledge", label: "Knowledge", icon: "docs" },
           { href: "/documents", label: "Documents", icon: "docs" },
           { href: "/designs", label: "AI Designs", icon: "image" },
+          /* Next to the designs themselves: the two questions about the Studio are "what did it
+             make" and "who has run out", and they get asked in the same breath. */
+          { href: "/studio", label: "Studio Usage", icon: "image" },
           { href: "/seo", label: "Search & AI", icon: "search" },
           { href: "/deploys", label: "Deployments", icon: "rocket" },
           { href: "/database", label: "Database", icon: "database" },
