@@ -2,6 +2,7 @@ import Link from "next/link"
 
 import { getDbPool } from "@/lib/db"
 import StudioGrantForm from "./grant-form"
+import RefineQueue, { type QueueItem } from "./refine-queue"
 
 export const dynamic = "force-dynamic"
 
@@ -119,6 +120,28 @@ export default async function StudioPage() {
     grantsUnavailable = true
   }
 
+  /**
+   * The refine queue, read with the same tolerance as the grants above: it arrives in a migration,
+   * and a page that cannot render until every table exists is a page that breaks on every deploy
+   * whose migration has not run yet.
+   */
+  let queue: QueueItem[] = []
+  let queueUnavailable = false
+  try {
+    const { rows } = await db.query<QueueItem>(
+      `SELECT r.id, r.customer_id, r.message, r.contact, r.created_at,
+              r.generation_id, r.design_id, c.email, c.phone
+         FROM ai_studio.refine_requests r
+         LEFT JOIN public.customer c ON c.id = r.customer_id
+        WHERE r.status = 'open'
+        ORDER BY r.created_at ASC
+        LIMIT 50`
+    )
+    queue = rows
+  } catch {
+    queueUnavailable = true
+  }
+
   /* Sorted here rather than in SQL, now that the grant totals arrive separately. Emptiest first. */
   const usage: UsageRow[] = rawUsage
     .map((r) => ({ ...r, granted: grantedBy.get(r.customer_id) ?? 0 }))
@@ -163,15 +186,36 @@ export default async function StudioPage() {
             note={exhausted.length ? "Waiting on a conversation" : "Nobody is blocked right now"}
           />
           <Stat
-            label="Failed generations"
-            value={chargeFailed ? "Use up an allowance" : "Do not count"}
+            label="Waiting to hear from us"
+            value={queueUnavailable ? "—" : String(queue.length)}
             note={
-              chargeFailed
-                ? "A provider failure costs the customer an attempt"
-                : "A provider failure costs us compute, not them"
+              queue.length
+                ? "Asked us to refine a design, or for more generations"
+                : "Nobody is waiting"
             }
           />
         </section>
+
+        <h2 className="mt-8 flex items-baseline gap-2 text-sm font-semibold text-slate-900">
+          Waiting to hear from us
+          {queue.length > 0 && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-amber-900">
+              {queue.length}
+            </span>
+          )}
+        </h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Someone here has described a cake we could not make for them, or run out of generations
+          asking. They are the closest thing this product has to a qualified lead — and the fastest
+          way to help is usually a call, then adding a few generations below.
+        </p>
+        {queueUnavailable ? (
+          <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+            The queue is not available on this database yet — its migration has not run.
+          </p>
+        ) : (
+          <RefineQueue items={queue} />
+        )}
 
         {grantsUnavailable && (
           <p className="mt-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">

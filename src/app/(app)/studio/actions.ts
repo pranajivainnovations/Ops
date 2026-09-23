@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 
 import { getCurrentSession } from "@/lib/auth"
+import { getDbPool } from "@/lib/db"
 
 /**
  * Giving a customer more Studio generations.
@@ -102,6 +103,65 @@ export async function grantStudioGenerations(
     return {
       ok: false,
       error: error instanceof Error ? error.message : "The backend is unreachable.",
+      message: null,
+    }
+  }
+}
+
+/**
+ * Marking a refine request done.
+ *
+ * ── Why this writes straight to the database ───────────────────────────────────────────────────
+ * Unlike a grant, which goes through the backend so the ledger owns attribution, this is an
+ * ordinary piece of work moving through a queue. OPS writes its own non-money state directly — the
+ * same way it takes a design out of the public gallery — and routing it through the backend would
+ * add a hop and a second place for the rule to live.
+ *
+ * The attribution still happens, and the database insists on it: `handled` without a name and a
+ * time is refused by a check constraint, not by this function. That is deliberate. A status column
+ * nobody guards is the one that ends up bulk-updated at midnight with no record of who spoke to the
+ * customer, or whether anybody did.
+ */
+export async function markRefineHandled(
+  _prev: StudioGrantState,
+  formData: FormData
+): Promise<StudioGrantState> {
+  const session = await getCurrentSession()
+  if (!session?.userId) {
+    return { ok: false, error: "Your session expired. Please sign in again.", message: null }
+  }
+
+  const id = String(formData.get("requestId") ?? "").trim()
+  const note = String(formData.get("handledNote") ?? "").trim()
+
+  if (!id) {
+    return { ok: false, error: "Which request?", message: null }
+  }
+
+  try {
+    const db = getDbPool()
+    const { rowCount } = await db.query(
+      `UPDATE ai_studio.refine_requests
+          SET status = 'handled',
+              handled_by = $1::uuid,
+              handled_at = NOW(),
+              handled_note = NULLIF($2, '')
+        WHERE id = $3::uuid AND status = 'open'`,
+      [session.userId, note, id]
+    )
+
+    if (!rowCount) {
+      /* Someone else got there first, which is a normal thing to happen on a shared queue and not
+         worth an error — the row is closed either way. */
+      return { ok: true, error: null, message: "That one was already handled." }
+    }
+
+    revalidatePath("/studio")
+    return { ok: true, error: null, message: "Marked as handled." }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not update that request.",
       message: null,
     }
   }
