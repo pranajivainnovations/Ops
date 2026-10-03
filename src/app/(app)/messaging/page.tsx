@@ -1,6 +1,6 @@
-import { deleteTemplate, saveFlow, saveTemplate } from "./actions"
+import { deleteTemplate, saveFlow, saveOrderNotifyRule, saveTemplate } from "./actions"
 import TestPanel from "./test-panel"
-import { FLOW_LIMITS, getFlows, getTemplates } from "./data"
+import { FLOW_LIMITS, getFlows, getOrderNotifyRules, getTemplates } from "./data"
 
 export const dynamic = "force-dynamic"
 
@@ -33,7 +33,11 @@ export default async function MessagingPage({
   searchParams: Promise<{ error?: string; saved?: string }>
 }) {
   const { error, saved } = await searchParams
-  const [templates, flows] = await Promise.all([getTemplates(), getFlows()])
+  const [templates, flows, orderRules] = await Promise.all([
+    getTemplates(),
+    getFlows(),
+    getOrderNotifyRules(),
+  ])
 
   const activeTemplates = templates.filter((t) => t.isActive)
 
@@ -283,6 +287,87 @@ export default async function MessagingPage({
                 </form>
               )
             })}
+          </div>
+        </section>
+
+        {/* ── Order updates ──────────────────────────────────────────────────────────────── */}
+        <section>
+          <h2 className="text-sm font-bold text-slate-900">Order updates</h2>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            What a customer is told as their order moves. Each one needs its own DLT-approved
+            template; until you point a status at one and switch it on, nothing is sent for it and
+            nothing breaks. Orders still move and the customer&rsquo;s own order page still shows
+            every step — this is the message that reaches them without looking.
+          </p>
+
+          <div className="mt-4 flex flex-col gap-3">
+            {orderRules.map((r) => (
+              <form
+                key={`${r.brand}:${r.status}`}
+                action={saveOrderNotifyRule}
+                className="rounded-xl border border-slate-200 bg-white p-4"
+              >
+                <input type="hidden" name="brand" value={r.brand} />
+                <input type="hidden" name="status" value={r.status} />
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="text-sm font-semibold text-slate-900">
+                      {r.status.replace(/_/g, " ")}
+                    </span>
+                    <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                      {r.brand}
+                    </span>
+                    {r.isEnabled ? (
+                      <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                        sending
+                      </span>
+                    ) : (
+                      <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                        off
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs tabular-nums text-slate-400">
+                    {r.sentCount > 0 ? `${r.sentCount} sent` : "never sent"}
+                  </span>
+                </div>
+
+                {r.note && <p className="mt-1 text-xs text-slate-500">{r.note}</p>}
+
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <div className="min-w-[16rem] flex-1">
+                    <label className={labelClass}>Approved template</label>
+                    <select name="templateId" defaultValue={r.templateId ?? ""} className={inputClass}>
+                      <option value="">— none yet —</option>
+                      {activeTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label} ({t.senderHeader})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
+                    <input type="checkbox" name="isEnabled" defaultChecked={r.isEnabled} />
+                    Send this one
+                  </label>
+
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+                  >
+                    Save
+                  </button>
+                </div>
+
+                {/* A provider rejection is the thing somebody needs to see; successes speak for
+                    themselves in the count above. */}
+                {r.lastError && (
+                  <p className="mt-2 text-xs text-rose-600">Last failure: {r.lastError}</p>
+                )}
+              </form>
+            ))}
           </div>
         </section>
 

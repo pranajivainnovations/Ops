@@ -238,3 +238,37 @@ export async function saveChecklistTask(formData: FormData) {
   revalidatePath("/messaging/checklist")
   redirect("/messaging/checklist?saved=1")
 }
+
+/**
+ * Point an order status at an approved template, or switch it off.
+ *
+ * ── Why enabling without a template is refused here and in the database ────────────────────────
+ * A rule switched on with nothing to send fails at the exact moment a customer was expecting to
+ * hear from us, and it fails silently — no error, no message, nothing to notice. The database has a
+ * CHECK that makes it impossible; this says so in words first, because a constraint violation is
+ * not a sentence anybody should have to read off a screen.
+ */
+export async function saveOrderNotifyRule(formData: FormData) {
+  const session = await getCurrentSession()
+  if (!session?.userId) fail("Your session has expired. Sign in again.")
+
+  const brand = str(formData, "brand")
+  const status = str(formData, "status")
+  const templateId = str(formData, "templateId")
+  const isEnabled = formData.get("isEnabled") === "on"
+
+  if (!brand || !status) fail("Missing which rule to save.")
+  if (isEnabled && !templateId) {
+    fail("Pick an approved template before switching this on — there would be nothing to send.")
+  }
+
+  await getDbPool().query(
+    `UPDATE orders.notify_rules
+        SET template_id = $1, is_enabled = $2, updated_by = $3, updated_at = NOW()
+      WHERE brand = $4 AND status = $5`,
+    [templateId || null, isEnabled, session.userId, brand, status]
+  )
+
+  revalidatePath("/messaging")
+  redirect("/messaging?saved=1")
+}

@@ -122,3 +122,69 @@ export const FLOW_LIMITS = {
   resendCooldownSeconds: { min: 15, max: 300 },
   dailySendLimit: { min: 1, max: 50 },
 } as const
+
+/**
+ * Which template answers which order status.
+ *
+ * ── Why these are rows and not code ────────────────────────────────────────────────────────────
+ * Every transactional SMS in India needs a DLT-registered template, approved per sender header, and
+ * approvals come back weeks apart one at a time. Holding the mapping in the database means each
+ * approval is an edit on this screen rather than a deploy — and the sending code, which ships before
+ * any of them exist, simply does nothing until a row names a template.
+ */
+export interface OrderNotifyRule {
+  brand: string
+  status: string
+  templateId: string | null
+  templateLabel: string | null
+  isEnabled: boolean
+  note: string | null
+  updatedBy: string | null
+  updatedAt: string | null
+  /** How many customers have actually been told this, ever. */
+  sentCount: number
+  lastError: string | null
+}
+
+export async function getOrderNotifyRules(): Promise<OrderNotifyRule[]> {
+  const { rows } = await getDbPool().query<{
+    brand: string
+    status: string
+    template_id: string | null
+    template_label: string | null
+    is_enabled: boolean
+    note: string | null
+    updated_by: string | null
+    updated_at: string | null
+    sent_count: number
+    last_error: string | null
+  }>(
+    `SELECT r.brand, r.status, r.template_id, t.label AS template_label,
+            r.is_enabled, r.note, r.updated_by, r.updated_at,
+            (SELECT count(*)::int FROM orders.notifications n
+              WHERE n.status = r.status AND n.sent_ok) AS sent_count,
+            (SELECT n.error FROM orders.notifications n
+              WHERE n.status = r.status AND NOT n.sent_ok
+              ORDER BY n.sent_at DESC LIMIT 1) AS last_error
+       FROM orders.notify_rules r
+       LEFT JOIN crossfriend.sms_templates t ON t.id = r.template_id
+      ORDER BY r.brand,
+               /* The order a customer meets them in, not alphabetical. */
+               array_position(
+                 ARRAY['paid','accepted','making','out_for_delivery','delivered','cancelled'],
+                 r.status)`
+  )
+
+  return rows.map((r) => ({
+    brand: r.brand,
+    status: r.status,
+    templateId: r.template_id,
+    templateLabel: r.template_label,
+    isEnabled: r.is_enabled,
+    note: r.note,
+    updatedBy: r.updated_by,
+    updatedAt: r.updated_at,
+    sentCount: r.sent_count,
+    lastError: r.last_error,
+  }))
+}

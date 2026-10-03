@@ -82,7 +82,10 @@ const BRANDS: Brand[] = [
         accent: "violet",
         items: [
           // First in the group: an order with a clock running outranks anything else on this screen.
-          { href: "/orders", label: "Orders", icon: "receipt" },
+          { href: "/orders/live", label: "Orders", icon: "receipt" },
+          // The Medusa-era orders, kept until the old checkout code is removed. Everything placed
+          // since the pipeline moved is on the screen above; this one holds the handful before it.
+          { href: "/orders", label: "Orders (legacy)", icon: "receipt" },
           { href: "/bakers", label: "Bakers", icon: "store" },
           { href: "/pincodes", label: "Pincodes", icon: "pin" },
           { href: "/rewards", label: "Rewards", icon: "tag" },
