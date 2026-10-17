@@ -152,6 +152,9 @@ const BRANDS: Brand[] = [
           { href: "/pranajiva/knowledge", label: "Knowledge articles", icon: "docs" },
           { href: "/pranajiva/formulas", label: "Formulas", icon: "flask" },
           { href: "/pranajiva/topics", label: "Content topics", icon: "docs" },
+          // The live catalogue. Next to "Product concepts" on purpose and named differently from
+          // it: that one is eighteen research concepts from Drive, this is what is on the site.
+          { href: "/pranajiva/catalogue", label: "Catalogue", icon: "tag" },
           { href: "/pranajiva/products", label: "Product concepts", icon: "tag" },
           { href: "/pranajiva/documents", label: "All documents", icon: "database" },
         ],

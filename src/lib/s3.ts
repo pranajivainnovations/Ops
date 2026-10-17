@@ -166,3 +166,53 @@ export async function uploadBoardImage(
 
   return { s3Key, url: buildPublicUrl(s3Key) }
 }
+
+/**
+ * Uploads a PranaJiva product photograph.
+ *
+ * Filed under `products/{handle}/` because that is where the existing catalogue photography
+ * already lives — `products/beetroot-face-pack/jar-100g-front.png` and so on. Matching it means a
+ * photograph uploaded from OPS sits beside the ones uploaded before OPS could do it, and the
+ * bucket stays browsable by product rather than becoming a pile of UUIDs.
+ *
+ * ── Why the size cap is lower than it looks ───────────────────────────────────────────────────
+ * The existing product PNGs are 1.1 MB to 1.9 MB, and they are the reason every WhatsApp share of
+ * a product arrived without a picture for weeks. The storefront now composes its own 1200x630
+ * preview from whatever is here, so a large original is no longer fatal — but there is still no
+ * reason to carry print masters on a web page, and 8 MB is the cap the other uploads use.
+ *
+ * Same validation and reasoning as the uploads above: only signed-in ops staff can reach this.
+ */
+export async function uploadProductImage(
+  handle: string,
+  buffer: Buffer,
+  mimeType: string
+): Promise<BakerImageUploadResult> {
+  if (buffer.length === 0) throw new Error("Uploaded file is empty.")
+  if (buffer.length > MAX_BAKER_IMAGE_BYTES) {
+    throw new Error(`Image must be under ${MAX_BAKER_IMAGE_BYTES / (1024 * 1024)}MB.`)
+  }
+  const extension = EXTENSION_BY_MIME[mimeType]
+  if (!extension) throw new Error("File must be a JPEG, PNG, or WEBP image.")
+
+  /* The handle reaches here from a database row, but it is part of an object key, so it is
+     constrained here too rather than trusted to be well-formed. */
+  const safeHandle = handle.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "")
+  if (!safeHandle) throw new Error("That product has no usable handle to file the image under.")
+
+  const s3Key = `products/${safeHandle}/${crypto.randomUUID()}.${extension}`
+
+  const client = getS3Client()
+  await client.send(
+    new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET || "pranajiva-innovations",
+      Key: s3Key,
+      Body: buffer,
+      ContentType: mimeType,
+      CacheControl: "public, max-age=31536000, immutable",
+      ACL: "public-read",
+    })
+  )
+
+  return { s3Key, url: buildPublicUrl(s3Key) }
+}
