@@ -141,6 +141,11 @@ export interface OrderNotifyRule {
   note: string | null
   updatedBy: string | null
   updatedAt: string | null
+  /**
+   * Set only on an internal alert, where the message goes to this number instead of to the
+   * customer. NULL — every customer-facing rule — means the order's own delivery phone.
+   */
+  recipientMobile: string | null
   /** How many customers have actually been told this, ever. */
   sentCount: number
   lastError: string | null
@@ -156,11 +161,12 @@ export async function getOrderNotifyRules(): Promise<OrderNotifyRule[]> {
     note: string | null
     updated_by: string | null
     updated_at: string | null
+    recipient_mobile: string | null
     sent_count: number
     last_error: string | null
   }>(
     `SELECT r.brand, r.status, r.template_id, t.label AS template_label,
-            r.is_enabled, r.note, r.updated_by, r.updated_at,
+            r.is_enabled, r.note, r.updated_by, r.updated_at, r.recipient_mobile,
             (SELECT count(*)::int FROM orders.notifications n
               WHERE n.status = r.status AND n.sent_ok) AS sent_count,
             (SELECT n.error FROM orders.notifications n
@@ -171,7 +177,7 @@ export async function getOrderNotifyRules(): Promise<OrderNotifyRule[]> {
       ORDER BY r.brand,
                /* The order a customer meets them in, not alphabetical. */
                array_position(
-                 ARRAY['paid','accepted','making','out_for_delivery','delivered','cancelled'],
+                 ARRAY['ops_new_order','placed','paid','accepted','making','out_for_delivery','delivered','cancelled'],
                  r.status)`
   )
 
@@ -182,6 +188,7 @@ export async function getOrderNotifyRules(): Promise<OrderNotifyRule[]> {
     templateLabel: r.template_label,
     isEnabled: r.is_enabled,
     note: r.note,
+    recipientMobile: r.recipient_mobile,
     updatedBy: r.updated_by,
     updatedAt: r.updated_at,
     sentCount: r.sent_count,

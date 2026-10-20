@@ -142,6 +142,13 @@ const BRANDS: Brand[] = [
     logo: "bg-gradient-to-br from-emerald-500 to-teal-600",
     groups: [
       {
+        /* Running the shop comes before the research that feeds it: an order waiting to go out is
+           the only thing on this brand with a clock on it. */
+        label: "Shop",
+        accent: "emerald",
+        items: [{ href: "/pranajiva/orders", label: "Orders", icon: "receipt" }],
+      },
+      {
         label: "Knowledge base",
         accent: "emerald",
         items: [

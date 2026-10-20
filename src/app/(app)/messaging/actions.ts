@@ -50,7 +50,19 @@ export async function saveTemplate(formData: FormData) {
   if (!HEADER_PATTERN.test(senderHeader)) {
     fail("Sender header must be 3–11 letters or digits, exactly as DLT approved it.")
   }
-  if (!dltTemplateId) fail("The DLT template ID is required.")
+  /**
+   * The DLT id is no longer required to save a template.
+   *
+   * It was, on the reasoning that a template without one cannot legally send — which is true of
+   * the registration and false of this row. Nothing reads this column at send time; the MSG91 id
+   * is what sends. Requiring it meant a template already created and approved on MSG91 could not
+   * be recorded until somebody went and read nineteen digits out of the DLT portal, so the ids
+   * lived in a text file instead of in the tool. One of the two has to be present, though — a row
+   * with neither id is a label and nothing else.
+   */
+  if (!dltTemplateId && !providerTemplateId) {
+    fail("Enter at least one of the two IDs — the MSG91 one is what actually sends.")
+  }
 
   /**
    * The body is reference material now, not configuration — so it is no longer validated.
@@ -91,10 +103,13 @@ export async function saveTemplate(formData: FormData) {
       )
     }
   } catch (err) {
-    // The unique index on dlt_template_id is the likely cause, and "duplicate key value violates…"
-    // is not something an operator should have to read.
+    /* A unique index is the likely cause, and "duplicate key value violates…" is not something an
+       operator should have to read. Both ids are guarded now, so both are named. */
     if (String(err).includes("sms_templates_dlt_template_id_key")) {
       fail(`A template with DLT ID ${dltTemplateId} already exists.`)
+    }
+    if (String(err).includes("sms_templates_provider_template_id_key")) {
+      fail(`A template with MSG91 ID ${providerTemplateId} already exists.`)
     }
     throw err
   }
@@ -262,11 +277,33 @@ export async function saveOrderNotifyRule(formData: FormData) {
     fail("Pick an approved template before switching this on — there would be nothing to send.")
   }
 
+  /**
+   * The on-call number, on an internal rule only.
+   *
+   * Validated to ten bare digits here as well as by the CHECK on the column, because a constraint
+   * violation surfaces as a Postgres error page and "that is not a mobile number" is a sentence the
+   * operator should read next to the field they typed it in.
+   *
+   * A customer-facing rule never gets one: the field is not rendered for it, and a form that
+   * somehow carried a number would be quietly telling us to send a customer's order update to a
+   * stranger. Ignored rather than refused, so nothing about the rest of the save changes.
+   */
+  const internal = status === "ops_new_order"
+  const typedMobile = str(formData, "recipientMobile").replace(/\D/g, "").slice(-10)
+
+  if (internal) {
+    if (!/^[6-9]\d{9}$/.test(typedMobile)) {
+      fail("Enter the ten-digit mobile this alert should go to.")
+    }
+  }
+
   await getDbPool().query(
     `UPDATE orders.notify_rules
-        SET template_id = $1, is_enabled = $2, updated_by = $3, updated_at = NOW()
+        SET template_id = $1, is_enabled = $2,
+            recipient_mobile = CASE WHEN $6 THEN $7 ELSE NULL END,
+            updated_by = $3, updated_at = NOW()
       WHERE brand = $4 AND status = $5`,
-    [templateId || null, isEnabled, session.userId, brand, status]
+    [templateId || null, isEnabled, session.userId, brand, status, internal, typedMobile || null]
   )
 
   revalidatePath("/messaging")

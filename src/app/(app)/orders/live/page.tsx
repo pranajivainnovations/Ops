@@ -14,6 +14,16 @@ export const dynamic = "force-dynamic"
  * Customers could place orders; nobody could see them, assign them or move them. The pipeline
  * worked and the business could not run it.
  *
+ * ── Why this is CrossFriend only ───────────────────────────────────────────────────────────────
+ * It was both brands, and that made it wrong for one of them. Everything this screen is organised
+ * around is the question "who is making this": its first group is "Needs a baker" and its loudest
+ * number counts orders nobody has. PranaJiva sells finished jars off a shelf and has no bakers at
+ * all, so every PranaJiva order qualified — all of them sat at the top of this page flagged as
+ * needing something that does not exist, pushing real unassigned cakes below them.
+ *
+ * They now live at /pranajiva/orders, on a screen built around the question that brand actually
+ * has, which is what has to go out today.
+ *
  * ── Why unassigned orders sort to the top ──────────────────────────────────────────────────────
  * An order with no baker is the only kind where nothing is happening and the clock is running. Date
  * order would bury today's unmade cake under last week's delivered ones; this puts the thing that
@@ -77,6 +87,7 @@ export default async function LiveOrdersPage() {
             ), '[]'::json) AS events
        FROM orders.orders o
        LEFT JOIN public.customer c ON c.id = o.customer_id
+      WHERE o.brand = 'crossfriend'
       ORDER BY o.created_at DESC
       LIMIT 200`
   )

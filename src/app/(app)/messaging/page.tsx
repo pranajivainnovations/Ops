@@ -1,4 +1,5 @@
 import { deleteTemplate, saveFlow, saveOrderNotifyRule, saveTemplate } from "./actions"
+import OrderSmsTest from "./order-sms-test"
 import TestPanel from "./test-panel"
 import { FLOW_LIMITS, getFlows, getOrderNotifyRules, getTemplates } from "./data"
 
@@ -163,8 +164,18 @@ export default async function MessagingPage({
                         {assigned ? (
                           <>
                             Messages for this flow are sent from{" "}
-                            <strong className="text-slate-700">{assigned.senderHeader}</strong> using
-                            DLT template <code>{assigned.dltTemplateId}</code>.
+                            <strong className="text-slate-700">{assigned.senderHeader}</strong>
+                            {assigned.dltTemplateId ? (
+                              <>
+                                {" "}
+                                using DLT template <code>{assigned.dltTemplateId}</code>.
+                              </>
+                            ) : (
+                              /* Sends fine — the MSG91 id is what carries it — but the registration
+                                 it belongs to is not recorded anywhere, so say so rather than print
+                                 an empty code block. */
+                              <>, with no DLT template ID recorded against it yet.</>
+                            )}
                           </>
                         ) : (
                           "Only active templates with an MSG91 ID can be assigned."
@@ -299,6 +310,11 @@ export default async function MessagingPage({
             nothing breaks. Orders still move and the customer&rsquo;s own order page still shows
             every step — this is the message that reaches them without looking.
           </p>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            One row here is addressed to us rather than to a customer: the new-order alert carries
+            the number it goes to, and fires the moment an order becomes real — at checkout for
+            cash, at payment for card, never twice for the same order.
+          </p>
 
           <div className="mt-4 flex flex-col gap-3">
             {orderRules.map((r) => (
@@ -313,7 +329,9 @@ export default async function MessagingPage({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <span className="text-sm font-semibold text-slate-900">
-                      {r.status.replace(/_/g, " ")}
+                      {r.status === "ops_new_order"
+                        ? "New order — internal alert"
+                        : r.status.replace(/_/g, " ")}
                     </span>
                     <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                       {r.brand}
@@ -347,6 +365,21 @@ export default async function MessagingPage({
                       ))}
                     </select>
                   </div>
+
+                  {/* Only on an internal alert. A customer-facing rule has no number to choose —
+                      it goes to whoever placed the order, which is not a setting. */}
+                  {r.status === "ops_new_order" && (
+                    <div className="min-w-[10rem]">
+                      <label className={labelClass}>Goes to</label>
+                      <input
+                        name="recipientMobile"
+                        inputMode="numeric"
+                        placeholder="9811730868"
+                        defaultValue={r.recipientMobile ?? ""}
+                        className={`${inputClass} font-mono tabular-nums`}
+                      />
+                    </div>
+                  )}
 
                   <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
                     <input type="checkbox" name="isEnabled" defaultChecked={r.isEnabled} />
@@ -433,6 +466,23 @@ export default async function MessagingPage({
           </div>
         </section>
 
+        <section>
+          <h2 className="text-sm font-bold text-slate-900">Test an order template</h2>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            Sends one message to a number you choose. Worth doing before switching any rule on,
+            because MSG91 reports a wrong variable name as a success &mdash; it delivers the message
+            with the blank left empty and shows nothing wrong anywhere. The handset is the only
+            place that failure is visible.
+          </p>
+          <div className="mt-4">
+            <OrderSmsTest
+              templates={activeTemplates
+                .filter((t) => t.providerTemplateId)
+                .map((t) => ({ id: t.id, label: t.label, senderHeader: t.senderHeader }))}
+            />
+          </div>
+        </section>
+
         <TestPanel />
       </div>
     </main>
@@ -487,7 +537,10 @@ function TemplateFields({
           className={inputClass}
           autoComplete="off"
         />
-        <p className="mt-1 text-[11px] text-slate-500">From the DLT portal. Must be unique.</p>
+        <p className="mt-1 text-[11px] text-slate-500">
+          From the DLT portal. Unique when given, and safe to leave empty until you have it — it is
+          a record of the registration, not what sends.
+        </p>
       </div>
 
       <div>
