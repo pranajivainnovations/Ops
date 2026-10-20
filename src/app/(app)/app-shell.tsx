@@ -135,6 +135,28 @@ const BRANDS: Brand[] = [
     ],
   },
   {
+    /**
+     * Its own tab rather than a group inside a brand, because a reel is made for whichever brand
+     * needs one — the reels table carries a brand per row — and burying it under one of them would
+     * make the other look unsupported.
+     */
+    key: "social",
+    label: "Social",
+    home: "/social",
+    initials: "SO",
+    logo: "bg-gradient-to-br from-rose-500 to-orange-500",
+    groups: [
+      {
+        label: "Video",
+        accent: "amber",
+        items: [
+          { href: "/social", label: "Reels", icon: "play", exact: true },
+          { href: "/social/settings", label: "API key & spend", icon: "key" },
+        ],
+      },
+    ],
+  },
+  {
     key: "pranajiva",
     label: "Pranajiva",
     home: "/pranajiva",
@@ -209,6 +231,8 @@ const ACCENT: Record<Accent, { label: string; chip: string; activeChip: string; 
 
 const ICONS: Record<string, React.ReactNode> = {
   receipt: <path d="M5 2h10v16l-2.5-1.5L10 18l-2.5-1.5L5 18zM8 7h4M8 10h4" />,
+  play: <path d="M4 3l12 7-12 7z" />,
+  key: <path d="M12 2a4 4 0 00-3.6 5.8L2 14.2V18h3.8l6.4-6.4A4 4 0 1012 2zm1.5 3.5h.01" />,
   store: <path d="M3 7l1.5-3h11L17 7M3 7h14M3 7v9h14V7M7 16v-4h6v4" />,
   pin: <path d="M10 17s5-4.6 5-8a5 5 0 1 0-10 0c0 3.4 5 8 5 8zM10 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" />,
   tag: <path d="M3 9.5V4h5.5l8 8-5.5 5.5-8-8zM6.2 6.2h.01" />,
