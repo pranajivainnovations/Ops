@@ -66,6 +66,30 @@ const LINKS = {
   "sheetali-cooling-breath": ["stress"],
   "surya-bhedana-right-nostril-breathing": ["energy"],
   "chandra-bhedana-left-nostril-breathing": ["sleep", "stress"],
+
+  /**
+   * Understanding — the explainers.
+   *
+   * These are the rows that make the cross-type rail work at all. "Pairs well with this" prefers an
+   * entry of a different type, so while every live entry was a remedy it could only ever offer a
+   * reader looking at a tea more teas. An explainer tagged with the same concern is a different
+   * kind of answer to the same question, which is the whole point of the concern axis.
+   *
+   * Four of these were already set when the articles were seeded, because Cough & Cold, Digestion
+   * and Immunity were published by then. They are restated here so one table describes the
+   * intended tagging rather than two halves of it; the script merges, so a re-run is a no-op.
+   *
+   * three-doshas and prakriti-and-vikriti are deliberately untagged. They are the framework rather
+   * than an answer to a complaint, and a reader arriving with a cough is not looking for them.
+   * pitta-dosha wants a skin concern, which does not exist yet.
+   */
+  "kapha-dosha": ["cough-cold"],
+  "vata-dosha": ["sleep", "stress"],
+  "agni-digestive-fire": ["digestion"],
+  "ama-undigested-residue": ["digestion"],
+  "ojas-vitality-reserve": ["immunity", "energy"],
+  "six-tastes-shad-rasa": ["digestion"],
+  "dinacharya-ayurvedic-daily-routine": ["sleep", "energy"],
 }
 
 function loadToken() {
