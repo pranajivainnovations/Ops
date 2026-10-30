@@ -7,6 +7,7 @@ import {
   getReel,
   needsStitching,
   runningSeconds,
+  totalCostCents,
 } from "@/lib/social/reels"
 import { SectionHeader } from "../_components/header"
 import Builder from "./builder"
@@ -26,9 +27,9 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
   const reel = await getReel(id)
   if (!reel) notFound()
 
-  const seconds = runningSeconds(reel.shots)
-  const cost = reel.shots.reduce((sum, s) => sum + (s.costCents ?? 0), 0)
-  const stitching = needsStitching(reel.shots)
+  const seconds = runningSeconds(reel.scenes)
+  const cost = totalCostCents(reel.scenes)
+  const stitching = needsStitching(reel.scenes)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -93,10 +94,10 @@ export default async function ReelPage({ params }: { params: Promise<{ id: strin
           reelStatus={reel.status}
           targetSeconds={reel.targetSeconds}
           runningSeconds={seconds}
-          shots={reel.shots.map((s) => ({
-            ...s,
-            firstImageUrl: s.firstImageKey ? anchorUrl(s.firstImageKey) : null,
-            lastImageUrl: s.lastImageKey ? anchorUrl(s.lastImageKey) : null,
+          scenes={reel.scenes.map((scene) => ({
+            ...scene,
+            /* Keys become URLs here, on the server, so the client never has to know the bucket. */
+            images: scene.imageKeys.map((key) => ({ key, url: anchorUrl(key) })),
           }))}
         />
       </div>

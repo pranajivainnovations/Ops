@@ -1,7 +1,23 @@
 import { defineArrayMember, defineField, defineType } from "sanity"
 
 /**
- * One published article.
+ * One published article — and, in the Pranajiva dataset, every explanatory piece: what a dosha is,
+ * what Ojas means, what each chakra governs.
+ *
+ * ── Why concepts and chakras are articles rather than types of their own ───────────────────────
+ * Because they genuinely are articles. A remedy and a practice earned separate types by having
+ * structure a page can act on — ingredients, dosages, numbered steps. An explanation of Kapha has
+ * no such structure; it is prose with a headline, which is exactly what this type already models.
+ * Adding a `concept` type would have produced a second article type differing only in its name.
+ *
+ * The one thing reference entries do need is a fact table — a chakra's Sanskrit name, element, seed
+ * sound and location — and that arrives as `keyFacts` below: one optional field rather than a type.
+ *
+ * ── Why this is a factory ──────────────────────────────────────────────────────────────────────
+ * `concerns` points at the `concern` type, which exists only in the Pranajiva dataset; a cake brand
+ * has no wellness concerns and a reference to a type absent from the schema is a Studio that fails
+ * to start. The flag keeps one article model for both brands without giving CrossFriend a field it
+ * would never fill.
  *
  * ── Why the type is called "article" and not "post" ────────────────────────────────────────────
  * Pranajiva's storefront already queries `*[_type == "article"]` against its old project. Naming
@@ -27,7 +43,8 @@ import { defineArrayMember, defineField, defineType } from "sanity"
  * `datePublished` and `dateModified` in the page's structured data, which is one of the signals an
  * answer engine uses to decide whether a source is current enough to quote.
  */
-export default defineType({
+export default function defineArticle({ withConcerns = false }: { withConcerns?: boolean } = {}) {
+  return defineType({
   name: "article",
   title: "Article",
   type: "document",
@@ -95,6 +112,23 @@ export default defineType({
           validation: (rule) => rule.required(),
         }),
       ],
+    }),
+    /**
+     * A fact table, rendered above the body as a definition list.
+     *
+     * This is what lets the seven chakras be reference entries without a document type of their
+     * own — Sanskrit name, location, element, seed sound, signs of imbalance. It serves a dosha
+     * profile or a herb page just as well, which is why it is an open list of label/value pairs
+     * rather than a chakra-shaped set of named fields that only chakras could ever use.
+     */
+    defineField({
+      name: "keyFacts",
+      title: "Key facts",
+      description:
+        "Optional. For reference pieces where the facts are the point — a chakra, a dosha, a herb. Shown as a table before the body.",
+      type: "array",
+      of: [defineArrayMember({ type: "keyFact" })],
+      group: "content",
     }),
     defineField({
       name: "body",
@@ -165,11 +199,27 @@ export default defineType({
     }),
     defineField({
       name: "category",
-      title: "Category",
+      title: "Section",
+      description:
+        "Required, because the Knowledge Center index groups by it — an uncategorised piece has nowhere on the page to appear. Sub-sections are made by giving a category a parent.",
       type: "reference",
       to: [{ type: "category" }],
       group: "meta",
+      validation: (rule) => rule.required(),
     }),
+    ...(withConcerns
+      ? [
+          defineField({
+            name: "concerns",
+            title: "Helps with",
+            description:
+              "What a reader would arrive looking for. On an explanatory piece this is what connects it to the remedies and practices for the same problem — the dosha explainer appears under Cough & Cold because that is where someone with a cough will find it useful.",
+            type: "array",
+            of: [{ type: "reference", to: [{ type: "concern" }] }],
+            group: "meta",
+          }),
+        ]
+      : []),
     defineField({
       name: "tags",
       title: "Tags",
@@ -273,4 +323,5 @@ export default defineType({
       }
     },
   },
-})
+  })
+}

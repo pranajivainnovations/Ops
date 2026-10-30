@@ -113,7 +113,7 @@ function Group({
             </div>
 
             <p className="mt-2 text-[11px] text-slate-400">
-              {reel.readyCount} of {reel.shotCount} shot{reel.shotCount === 1 ? "" : "s"} ready
+              {reel.renderedCount} of {reel.sceneCount} scene{reel.sceneCount === 1 ? "" : "s"} rendered
               {reel.renderingCount > 0 && (
                 <span className="font-semibold text-amber-700"> · {reel.renderingCount} rendering</span>
               )}

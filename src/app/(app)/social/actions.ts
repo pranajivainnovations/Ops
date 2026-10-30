@@ -118,13 +118,13 @@ export async function closeReel(reelId: string, status: "done" | "abandoned"): P
   return { ok: status === "done" ? "Reel marked finished." : "Reel abandoned." }
 }
 
-/* ── Shots ─────────────────────────────────────────────────────────────────────────────────── */
+/* ── Scenes ────────────────────────────────────────────────────────────────────────────────── */
 
 /**
- * Stores an anchor frame and returns its key.
+ * Stores a reference image and returns its key.
  *
- * Separate from generating, because an operator picks the frames and then writes the prompt, and
- * making the upload part of the same submit would mean re-uploading on every corrected typo.
+ * Separate from saving the scene, because an operator picks frames and then writes around them,
+ * and folding the upload into the same submit would re-upload every image on each corrected typo.
  */
 export async function uploadAnchor(
   reelId: string,
@@ -140,7 +140,7 @@ export async function uploadAnchor(
   if (!(file instanceof File) || !file.size) return { error: "Choose an image first." }
 
   if (file.size > 12 * 1024 * 1024) {
-    return { error: "That image is over 12MB. Export it smaller — a frame does not need more." }
+    return { error: "That image is over 12MB. Export it smaller — a reference frame does not need more." }
   }
 
   const { data, error } = await callBackend<{ key: string; url: string }>("/ops/social/anchors", {
@@ -153,13 +153,109 @@ export async function uploadAnchor(
   return data
 }
 
-export async function generateShot(input: {
-  reelId: string
+export async function addScene(reelId: string): Promise<Result> {
+  try {
+    await requireUser()
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Not signed in." }
+  }
+
+  const { error } = await callBackend("/ops/social/scenes", { action: "add", reelId })
+  if (error) return { error }
+
+  revalidatePath(`/social/${reelId}`)
+  return { ok: "Scene added." }
+}
+
+export interface ScenePatch {
   prompt: string
-  mode: "text" | "image" | "first_last" | "continue"
-  firstImageKey?: string | null
-  lastImageKey?: string | null
-}): Promise<Result & { seq?: number }> {
+  shotType: string
+  cameraMove: string
+  audioNote: string
+  avoid: string
+  targetSeconds: number
+  continuesFrom: string | null
+  imageKeys: string[]
+}
+
+export async function saveScene(
+  reelId: string,
+  sceneId: string,
+  patch: ScenePatch
+): Promise<Result> {
+  try {
+    await requireUser()
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Not signed in." }
+  }
+
+  const { error } = await callBackend("/ops/social/scenes", {
+    action: "update",
+    sceneId,
+    ...patch,
+  })
+  if (error) return { error }
+
+  revalidatePath(`/social/${reelId}`)
+  return { ok: "Saved." }
+}
+
+/**
+ * The exact text a render would send.
+ *
+ * Composed by the backend using the same function a render uses, rather than reassembled here —
+ * a preview built by different code is a preview that is eventually wrong, and at roughly fifty
+ * cents a take the operator is entitled to read what they are buying.
+ */
+export async function previewScene(patch: ScenePatch): Promise<{ prompt?: string; error?: string }> {
+  try {
+    await requireUser()
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Not signed in." }
+  }
+
+  const { data, error } = await callBackend<{ prompt: string }>("/ops/social/scenes", {
+    action: "preview",
+    ...patch,
+  })
+
+  if (error || !data) return { error: error ?? "Could not build the preview." }
+  return { prompt: data.prompt }
+}
+
+export async function deleteScene(reelId: string, sceneId: string): Promise<Result> {
+  try {
+    await requireUser()
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Not signed in." }
+  }
+
+  const { error } = await callBackend("/ops/social/scenes", { action: "delete", sceneId })
+  if (error) return { error }
+
+  revalidatePath(`/social/${reelId}`)
+  return { ok: "Scene removed." }
+}
+
+export async function moveScene(
+  reelId: string,
+  sceneId: string,
+  direction: "up" | "down"
+): Promise<Result> {
+  try {
+    await requireUser()
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Not signed in." }
+  }
+
+  const { error } = await callBackend("/ops/social/scenes", { action: "move", sceneId, direction })
+  if (error) return { error }
+
+  revalidatePath(`/social/${reelId}`)
+  return { ok: "Moved." }
+}
+
+export async function renderScene(reelId: string, sceneId: string): Promise<Result> {
   let opsUserId: string
   try {
     opsUserId = await requireUser()
@@ -167,30 +263,43 @@ export async function generateShot(input: {
     return { error: error instanceof Error ? error.message : "Not signed in." }
   }
 
-  const { data, error } = await callBackend<{ seq: number }>("/ops/social/shots", {
-    action: "generate",
+  const { data, error } = await callBackend<{ attempt: number }>("/ops/social/scenes", {
+    action: "render",
+    sceneId,
     opsUserId,
-    reelId: input.reelId,
-    prompt: input.prompt,
-    mode: input.mode,
-    firstImageKey: input.firstImageKey ?? undefined,
-    lastImageKey: input.lastImageKey ?? undefined,
   })
-
   if (error) return { error }
 
-  revalidatePath(`/social/${input.reelId}`)
-  return { ok: `Shot ${data?.seq ?? ""} is rendering. It takes a few minutes.`, seq: data?.seq }
+  revalidatePath(`/social/${reelId}`)
+  return { ok: `Take ${data?.attempt ?? ""} is rendering. It takes a few minutes.` }
 }
 
-export async function abandonShot(reelId: string, shotId: string): Promise<Result> {
+export async function chooseTake(
+  reelId: string,
+  sceneId: string,
+  takeId: string | null
+): Promise<Result> {
   try {
     await requireUser()
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Not signed in." }
   }
 
-  const { error } = await callBackend("/ops/social/shots", { action: "abandon", shotId })
+  const { error } = await callBackend("/ops/social/scenes", { action: "choose", sceneId, takeId })
+  if (error) return { error }
+
+  revalidatePath(`/social/${reelId}`)
+  return { ok: takeId ? "Take selected." : "Selection cleared." }
+}
+
+export async function abandonTake(reelId: string, takeId: string): Promise<Result> {
+  try {
+    await requireUser()
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Not signed in." }
+  }
+
+  const { error } = await callBackend("/ops/social/shots", { action: "abandon", takeId })
   if (error) return { error }
 
   revalidatePath(`/social/${reelId}`)

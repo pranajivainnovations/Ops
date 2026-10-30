@@ -3,484 +3,694 @@
 import { useRouter } from "next/navigation"
 import { useEffect, useRef, useState, useTransition } from "react"
 
-import { MODE_LABEL, type ShotMode, type ShotStatus } from "@/lib/social/shot-types"
-import { abandonShot, closeReel, generateShot, uploadAnchor } from "../actions"
+import { AUDIO_PRESETS, CAMERA_MOVES, SHOT_TYPES } from "@/lib/social/shot-types"
+import {
+  abandonTake,
+  addScene,
+  chooseTake,
+  deleteScene,
+  moveScene,
+  previewScene,
+  renderScene,
+  saveScene,
+  uploadAnchor,
+  type ScenePatch,
+} from "../actions"
 
-interface BuilderShot {
+export interface BuilderTake {
   id: string
-  seq: number
-  mode: ShotMode
-  prompt: string
-  firstImageUrl: string | null
-  lastImageUrl: string | null
+  attempt: number
+  composedPrompt: string
   interactionId: string | null
   videoUrl: string | null
   seconds: number | null
   cumulative: boolean | null
-  status: ShotStatus
+  status: "rendering" | "ready" | "failed"
   error: string | null
   costCents: number | null
 }
 
-const box =
-  "w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 focus:border-slate-400 focus:outline-none"
+export interface BuilderScene {
+  id: string
+  seq: number
+  prompt: string
+  shotType: string
+  cameraMove: string
+  audioNote: string
+  avoid: string
+  targetSeconds: number
+  continuesFrom: string | null
+  images: { key: string; url: string }[]
+  chosenTakeId: string | null
+  takes: BuilderTake[]
+}
 
-/* Roughly ten cents a second — the figure the settings screen derives from Google's token rate. */
+const box =
+  "w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-800 focus:border-slate-400 focus:outline-none"
+
+/* Roughly ten cents a second, from Google's published token rate. */
 const CENTS_PER_SECOND = 10
 
 /**
- * The shot chain and the composer that adds to it.
+ * The storyboard.
  *
- * ── Why it polls itself ───────────────────────────────────────────────────────────────────────
- * A render takes minutes and nothing pushes. While any shot is rendering this refreshes the server
- * component every eight seconds, and the moment none is it stops — so the page is live exactly as
- * long as there is something to watch and completely still afterwards, rather than hammering the
- * database all afternoon because a tab was left open.
+ * ── Why planning and rendering are visibly different acts ────────────────────────────────────
+ * Editing a scene is free and happens constantly; rendering costs real money on the operator's own
+ * card and happens once they are happy. So every field saves quietly against its scene, and Render
+ * is a separate, deliberate button with the price next to it. Nothing here spends anything until
+ * that is pressed.
  *
- * ── Why the first shot is different from the rest ─────────────────────────────────────────────
- * Only the opening shot can be anchored to images: a continuation carries on from the previous
- * shot's final frame, which is the whole mechanism, and handing it a reference frame as well would
- * ask the model to start somewhere and carry on from somewhere else. So the composer shows anchors
- * before the chain exists and a continuation prompt afterwards.
+ * ── Why each scene chooses its own strategy ──────────────────────────────────────────────────
+ * The two ways of keeping a reel coherent are mutually exclusive per scene, and a 25-second reel
+ * normally needs both. A scene that CONTINUES another inherits everything and can introduce
+ * nothing — same camera, same light, same faces, and no new angle. A scene with REFERENCE IMAGES
+ * can cut to a new angle entirely and preserves only the likenesses you supply. The composer
+ * refuses the combination because the API does, and because asking the model to start somewhere
+ * and carry on from somewhere else has no sensible answer.
  */
 export default function Builder({
   reelId,
   reelStatus,
   targetSeconds,
   runningSeconds,
-  shots,
+  scenes,
 }: {
   reelId: string
   reelStatus: string
   targetSeconds: number
   runningSeconds: number
-  shots: BuilderShot[]
+  scenes: BuilderScene[]
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
   const [message, setMessage] = useState<{ error?: string; ok?: string } | null>(null)
 
-  const [prompt, setPrompt] = useState("")
-  const [first, setFirst] = useState<{ key: string; url: string } | null>(null)
-  const [last, setLast] = useState<{ key: string; url: string } | null>(null)
-  const [uploading, setUploading] = useState<"first" | "last" | null>(null)
-
-  const rendering = shots.some((s) => s.status === "rendering")
-  const opening = shots.length === 0
+  const rendering = scenes.some((s) => s.takes.some((t) => t.status === "rendering"))
   const closed = reelStatus !== "building"
+  const atCeiling = runningSeconds >= 40
 
-  /* Live only while something is actually rendering. */
+  /* Live only while something is actually rendering, still the rest of the time. */
   useEffect(() => {
     if (!rendering) return
     const timer = setInterval(() => router.refresh(), 8000)
     return () => clearInterval(timer)
   }, [rendering, router])
 
-  const lastReady = [...shots].reverse().find((s) => s.status === "ready")
-  const canContinue = Boolean(lastReady?.interactionId)
-  const nearCeiling = runningSeconds >= 34
-  const atCeiling = runningSeconds >= 40
-
-  const mode: ShotMode = opening
-    ? first && last
-      ? "first_last"
-      : first
-        ? "image"
-        : "text"
-    : "continue"
-
-  async function pickAnchor(slot: "first" | "last", file: File) {
-    setUploading(slot)
-    setMessage(null)
-
-    const form = new FormData()
-    form.set("file", file)
-    const result = await uploadAnchor(reelId, form)
-
-    setUploading(null)
-    if (result.error || !result.key || !result.url) {
-      setMessage({ error: result.error ?? "The image was not stored." })
-      return
-    }
-    const stored = { key: result.key, url: result.url }
-    if (slot === "first") setFirst(stored)
-    else setLast(stored)
-  }
-
-  function generate() {
-    setMessage(null)
-    start(async () => {
-      const result = await generateShot({
-        reelId,
-        prompt,
-        mode,
-        firstImageKey: opening ? first?.key : null,
-        lastImageKey: opening ? last?.key : null,
-      })
-      setMessage(result)
-      if (!result.error) {
-        setPrompt("")
-        setFirst(null)
-        setLast(null)
-        router.refresh()
-      }
-    })
-  }
-
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-      {/* ── The chain ─────────────────────────────────────────────────────────────────────── */}
-      <div className="min-w-0 space-y-3">
-        {shots.length === 0 && (
-          <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-xs text-slate-500">
-            No shots yet. Write the opening shot on the right — anchor it to an image if you have one,
-            which is what keeps a face and an outfit consistent across the whole reel.
-          </p>
-        )}
+    <div className="space-y-3">
+      {scenes.length === 0 && (
+        <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-xs text-slate-500">
+          No scenes yet. Add the first one — give it reference images of your characters, and every
+          later scene can cut to a new angle without them changing.
+        </p>
+      )}
 
-        {shots.map((shot) => (
-          <ShotCard key={shot.id} shot={shot} reelId={reelId} onChanged={() => router.refresh()} />
-        ))}
-      </div>
+      {scenes.map((scene) => (
+        <SceneCard
+          key={scene.id}
+          reelId={reelId}
+          scene={scene}
+          earlier={scenes.filter((s) => s.seq < scene.seq)}
+          isFirst={scene.seq === 1}
+          isLast={scene.seq === scenes.length}
+          closed={closed}
+          blockedByCeiling={atCeiling}
+          onChanged={() => router.refresh()}
+        />
+      ))}
 
-      {/* ── The composer ──────────────────────────────────────────────────────────────────── */}
-      <aside className="space-y-3">
-        {closed ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-            This reel is {reelStatus}. Nothing further can be generated on it — start a new reel to
-            keep going.
-          </div>
-        ) : (
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {opening ? "Opening shot" : `Shot ${shots.length + 1} — continuation`}
-            </h2>
-            <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{MODE_LABEL[mode]}</p>
+      {!closed && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                setMessage(await addScene(reelId))
+                router.refresh()
+              })
+            }
+            className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+          >
+            {pending ? "Adding…" : `Add scene ${scenes.length + 1}`}
+          </button>
 
-            {!opening && !canContinue && (
-              <p className="mt-2 rounded-lg bg-rose-50 px-2.5 py-2 text-[11px] leading-snug text-rose-800">
-                The last shot has no reference Google can continue from, so the chain stops here.
-                Regenerate it, or finish this reel and start another.
-              </p>
-            )}
+          <span className="text-[11px] text-slate-500">
+            Planning is free. Nothing is charged until you render a scene.
+          </span>
 
-            {atCeiling && (
-              <p className="mt-2 rounded-lg bg-rose-50 px-2.5 py-2 text-[11px] leading-snug text-rose-800">
-                This reel is at the model&rsquo;s 40-second ceiling. Nothing further can be added to
-                the chain.
-              </p>
-            )}
-            {!atCeiling && nearCeiling && (
-              <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-900">
-                {(40 - runningSeconds).toFixed(1)}s left before the 40-second ceiling.
-              </p>
-            )}
+          {message?.error && <span className="text-[11px] text-rose-700">{message.error}</span>}
+        </div>
+      )}
 
-            {opening && (
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <AnchorSlot
-                  label="Opening frame"
-                  hint="Anchors the look"
-                  value={first}
-                  busy={uploading === "first"}
-                  onPick={(file) => pickAnchor("first", file)}
-                  onClear={() => setFirst(null)}
-                />
-                <AnchorSlot
-                  label="Closing frame"
-                  hint="Optional — interpolates"
-                  value={last}
-                  busy={uploading === "last"}
-                  disabled={!first}
-                  onPick={(file) => pickAnchor("last", file)}
-                  onClear={() => setLast(null)}
-                />
-              </div>
-            )}
-
-            {opening && first && !last && (
-              <p className="mt-2 text-[11px] leading-snug text-slate-500">
-                One frame anchors where the shot starts. Add a closing frame and the model
-                interpolates between the two instead.
-              </p>
-            )}
-
-            <label className="mt-3 block">
-              <span className="text-xs font-semibold text-slate-700">
-                {opening ? "What happens" : "What happens next"}
-              </span>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={6}
-                placeholder={
-                  opening
-                    ? "Cinematic Dussehra courtyard, glowing diyas and marigold garlands. Slow push-in dolly. A man in a white kurta turns and smiles."
-                    : "Continue the same continuous camera motion, identical lighting and wardrobe. She sets the phone down and looks up, smiling."
-                }
-                className={`${box} mt-1 leading-relaxed`}
-              />
-            </label>
-
-            {!opening && (
-              <p className="mt-1 text-[11px] leading-snug text-slate-500">
-                Keep the camera and lighting where they are. A continuation that asks for a new angle
-                or a different time of day is where faces and clothing start drifting.
-              </p>
-            )}
-
-            <p className="mt-2 text-[11px] leading-snug text-slate-500">
-              There is no length setting — the model decides, between 3 and 10 seconds, from how much
-              you describe. A shot costs roughly{" "}
-              <span className="font-semibold tabular-nums">
-                ${((3 * CENTS_PER_SECOND) / 100).toFixed(2)}&ndash;$
-                {((10 * CENTS_PER_SECOND) / 100).toFixed(2)}
-              </span>
-              , charged to your key.
-            </p>
-
-            <button
-              type="button"
-              onClick={generate}
-              disabled={
-                pending ||
-                rendering ||
-                atCeiling ||
-                !prompt.trim() ||
-                (!opening && !canContinue) ||
-                uploading !== null
-              }
-              className="mt-3 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
-            >
-              {pending
-                ? "Starting…"
-                : rendering
-                  ? "Waiting for the current shot…"
-                  : opening
-                    ? "Generate opening shot"
-                    : `Generate shot ${shots.length + 1}`}
-            </button>
-
-            {message?.error && (
-              <p className="mt-2 text-[11px] leading-snug text-rose-700">{message.error}</p>
-            )}
-            {message?.ok && (
-              <p className="mt-2 text-[11px] leading-snug text-emerald-700">{message.ok}</p>
-            )}
-          </div>
-        )}
-
-        {!closed && shots.length > 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Finish</h2>
-            <p className="mt-1 text-[11px] leading-snug text-slate-500">
-              Closing a reel stops anything further being generated on it. It does not delete
-              anything.
-            </p>
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() =>
-                  start(async () => setMessage(await closeReel(reelId, "done")))
-                }
-                className="flex-1 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50"
-              >
-                Mark finished
-              </button>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => {
-                  if (!confirm("Abandon this reel? Shots already paid for are kept.")) return
-                  start(async () => setMessage(await closeReel(reelId, "abandoned")))
-                }}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-              >
-                Abandon
-              </button>
-            </div>
-          </div>
-        )}
-
-        {rendering && (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[11px] leading-snug text-amber-900">
-            A shot is rendering. This page refreshes itself every few seconds, so you can leave it —
-            though if the backend restarts while it runs, the render is lost and may still have been
-            billed.
-          </p>
-        )}
-      </aside>
+      {atCeiling && (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[11px] text-rose-800">
+          This reel is at the model&rsquo;s 40-second ceiling. Further scenes can be planned but not
+          rendered into the same chain.
+        </p>
+      )}
     </div>
   )
 }
 
 /**
- * One shot in the chain.
+ * One scene: the plan on the left, its takes on the right.
  *
- * The prompt is shown in full rather than truncated: it is the only record of what was asked for,
- * and the next continuation is written by reading it.
+ * Fields are held in local state and saved on blur rather than on every keystroke — a storyboard
+ * is edited in bursts, and a write per character would be a write per character.
  */
-function ShotCard({
-  shot,
+function SceneCard({
   reelId,
+  scene,
+  earlier,
+  isFirst,
+  isLast,
+  closed,
+  blockedByCeiling,
   onChanged,
 }: {
-  shot: BuilderShot
   reelId: string
+  scene: BuilderScene
+  earlier: BuilderScene[]
+  isFirst: boolean
+  isLast: boolean
+  closed: boolean
+  blockedByCeiling: boolean
   onChanged: () => void
 }) {
   const [pending, start] = useTransition()
+  const [open, setOpen] = useState(!scene.prompt)
+  const [message, setMessage] = useState<{ error?: string; ok?: string } | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
 
-  const chip =
-    shot.status === "ready"
-      ? "bg-emerald-100 text-emerald-800"
-      : shot.status === "rendering"
-        ? "bg-amber-100 text-amber-900"
-        : shot.status === "failed"
-          ? "bg-rose-100 text-rose-700"
-          : "bg-slate-100 text-slate-600"
+  const [form, setForm] = useState({
+    prompt: scene.prompt,
+    shotType: scene.shotType,
+    cameraMove: scene.cameraMove,
+    audioNote: scene.audioNote,
+    avoid: scene.avoid,
+    targetSeconds: scene.targetSeconds,
+    continuesFrom: scene.continuesFrom,
+  })
+  const [images, setImages] = useState(scene.images)
+
+  const patch = (): ScenePatch => ({ ...form, imageKeys: images.map((i) => i.key) })
+
+  const continuing = Boolean(form.continuesFrom)
+  const conflict = continuing && images.length > 0
+
+  const chosen = scene.takes.find((t) => t.id === scene.chosenTakeId) ?? null
+  const isRendering = scene.takes.some((t) => t.status === "rendering")
+
+  function save(next?: Partial<typeof form>, nextImages?: typeof images) {
+    const merged = { ...form, ...(next ?? {}) }
+    const mergedImages = nextImages ?? images
+    if (next) setForm(merged)
+    if (nextImages) setImages(nextImages)
+
+    start(async () => {
+      const result = await saveScene(reelId, scene.id, {
+        ...merged,
+        imageKeys: mergedImages.map((i) => i.key),
+      })
+      if (result.error) setMessage(result)
+    })
+  }
+
+  async function pickImage(file: File) {
+    if (images.length >= 6) {
+      setMessage({ error: "Six reference images is the model's limit." })
+      return
+    }
+    setUploading(true)
+    setMessage(null)
+
+    const data = new FormData()
+    data.set("file", file)
+    const result = await uploadAnchor(reelId, data)
+
+    setUploading(false)
+    if (result.error || !result.key || !result.url) {
+      setMessage({ error: result.error ?? "The image was not stored." })
+      return
+    }
+    save(undefined, [...images, { key: result.key, url: result.url }])
+  }
 
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-center gap-2">
+    <article className="rounded-xl border border-slate-200 bg-white">
+      <header className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5">
         <span className="rounded-md bg-slate-900 px-2 py-0.5 text-[11px] font-bold tabular-nums text-white">
-          {shot.seq}
+          {scene.seq}
         </span>
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${chip}`}>
-          {shot.status}
+
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="min-w-0 flex-1 truncate text-left text-xs font-semibold text-slate-800 hover:text-slate-950"
+        >
+          {form.prompt || <span className="font-normal text-slate-400">Untitled scene — click to write it</span>}
+        </button>
+
+        {continuing && (
+          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+            continues {earlier.find((e) => e.id === form.continuesFrom)?.seq ?? "?"}
+          </span>
+        )}
+        {images.length > 0 && (
+          <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-800">
+            {images.length} ref{images.length === 1 ? "" : "s"}
+          </span>
+        )}
+        {chosen?.seconds && (
+          <span className="text-[11px] tabular-nums text-slate-500">{chosen.seconds.toFixed(1)}s</span>
+        )}
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+          {scene.takes.length === 0
+            ? "not rendered"
+            : `${scene.takes.length} take${scene.takes.length === 1 ? "" : "s"}`}
         </span>
-        <span className="text-[11px] text-slate-400">{MODE_LABEL[shot.mode]}</span>
-        <span className="ml-auto text-[11px] tabular-nums text-slate-500">
-          {shot.seconds ? `${Number(shot.seconds).toFixed(1)}s` : "—"}
-          {shot.costCents !== null && ` · $${(shot.costCents / 100).toFixed(2)}`}
-        </span>
-      </div>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)]">
-        <div>
-          {shot.status === "ready" && shot.videoUrl ? (
-            /* controls, no autoplay: a page of shots all playing at once is unusable, and the
-               operator is comparing takes rather than watching a feed. */
-            <video
-              src={shot.videoUrl}
-              controls
-              preload="metadata"
-              className="w-full rounded-lg border border-slate-200 bg-slate-900"
-            />
-          ) : (
-            <div className="flex aspect-[9/16] max-h-56 w-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-[11px] text-slate-400">
-              {shot.status === "rendering" ? "Rendering…" : shot.status === "failed" ? "No video" : "—"}
-            </div>
-          )}
-
-          {(shot.firstImageUrl || shot.lastImageUrl) && (
-            <div className="mt-2 flex gap-2">
-              {shot.firstImageUrl && (
-                <img
-                  src={shot.firstImageUrl}
-                  alt="Opening frame"
-                  className="h-12 w-12 rounded border border-slate-200 object-cover"
-                />
-              )}
-              {shot.lastImageUrl && (
-                <img
-                  src={shot.lastImageUrl}
-                  alt="Closing frame"
-                  className="h-12 w-12 rounded border border-slate-200 object-cover"
-                />
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="min-w-0">
-          <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-700">{shot.prompt}</p>
-
-          {shot.error && (
-            <p className="mt-2 break-words rounded-lg bg-rose-50 px-2.5 py-2 text-[11px] leading-snug text-rose-800">
-              {shot.error}
-            </p>
-          )}
-
-          {shot.status === "rendering" && (
+        {!closed && (
+          <span className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={isFirst || pending}
+              onClick={() => start(async () => { await moveScene(reelId, scene.id, "up"); onChanged() })}
+              className="rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+              title="Move up"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              disabled={isLast || pending}
+              onClick={() => start(async () => { await moveScene(reelId, scene.id, "down"); onChanged() })}
+              className="rounded px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30"
+              title="Move down"
+            >
+              ↓
+            </button>
             <button
               type="button"
               disabled={pending}
               onClick={() => {
-                if (
-                  !confirm(
-                    "Mark this render failed? Use this only if the backend restarted — it may still have been billed."
-                  )
-                )
-                  return
+                const spent = scene.takes.reduce((s, t) => s + (t.costCents ?? 0), 0)
+                const warning = spent
+                  ? `Remove scene ${scene.seq}? $${(spent / 100).toFixed(2)} of renders go with it.`
+                  : `Remove scene ${scene.seq}?`
+                if (!confirm(warning)) return
+                start(async () => { await deleteScene(reelId, scene.id); onChanged() })
+              }}
+              className="rounded px-1.5 py-0.5 text-xs text-rose-600 hover:bg-rose-50 disabled:opacity-30"
+              title="Remove scene"
+            >
+              ✕
+            </button>
+          </span>
+        )}
+      </header>
+
+      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        {/* ── The plan ──────────────────────────────────────────────────────────────────── */}
+        <div className="min-w-0">
+          {open ? (
+            <div className="space-y-3">
+              <label className="block">
+                <span className="text-[11px] font-semibold text-slate-700">What happens</span>
+                <textarea
+                  value={form.prompt}
+                  onChange={(e) => setForm({ ...form, prompt: e.target.value })}
+                  onBlur={() => save()}
+                  rows={3}
+                  disabled={closed}
+                  placeholder="Rudra and Gauri crouch to place marigold petals around the rangoli, diyas glowing between them."
+                  className={`${box} mt-1 leading-relaxed`}
+                />
+              </label>
+
+              <div className="grid gap-2 sm:grid-cols-3">
+                <label className="block">
+                  <span className="text-[11px] font-semibold text-slate-700">Shot</span>
+                  <select
+                    value={form.shotType}
+                    onChange={(e) => save({ shotType: e.target.value })}
+                    disabled={closed}
+                    className={`${box} mt-1`}
+                  >
+                    <option value="">—</option>
+                    {SHOT_TYPES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-[11px] font-semibold text-slate-700">Camera</span>
+                  <select
+                    value={form.cameraMove}
+                    onChange={(e) => save({ cameraMove: e.target.value })}
+                    disabled={closed}
+                    className={`${box} mt-1`}
+                  >
+                    <option value="">—</option>
+                    {CAMERA_MOVES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-[11px] font-semibold text-slate-700">Length (s)</span>
+                  <input
+                    type="number"
+                    min={3}
+                    max={10}
+                    value={form.targetSeconds}
+                    onChange={(e) => setForm({ ...form, targetSeconds: Number(e.target.value) })}
+                    onBlur={() => save()}
+                    disabled={closed}
+                    className={`${box} mt-1 tabular-nums`}
+                  />
+                </label>
+              </div>
+
+              {/* Said once per scene, because it is the thing most likely to be misunderstood. */}
+              <p className="text-[10px] leading-snug text-slate-400">
+                Length is a <strong>hint</strong>, not a setting — this API has no duration
+                parameter. It is written into the prompt as a timecode, and the model still decides
+                between 3 and 10 seconds.
+              </p>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-[11px] font-semibold text-slate-700">Audio</span>
+                  <input
+                    list={`audio-${scene.id}`}
+                    value={form.audioNote}
+                    onChange={(e) => setForm({ ...form, audioNote: e.target.value })}
+                    onBlur={() => save()}
+                    disabled={closed}
+                    placeholder="No dialogue"
+                    className={`${box} mt-1`}
+                  />
+                  <datalist id={`audio-${scene.id}`}>
+                    {AUDIO_PRESETS.map((a) => (
+                      <option key={a} value={a} />
+                    ))}
+                  </datalist>
+                  <span className="mt-0.5 block text-[10px] leading-snug text-slate-400">
+                    The model invents an audio track unless told otherwise.
+                  </span>
+                </label>
+
+                <label className="block">
+                  <span className="text-[11px] font-semibold text-slate-700">Avoid</span>
+                  <input
+                    value={form.avoid}
+                    onChange={(e) => setForm({ ...form, avoid: e.target.value })}
+                    onBlur={() => save()}
+                    disabled={closed}
+                    placeholder="text on screen, logos, extra people"
+                    className={`${box} mt-1`}
+                  />
+                  <span className="mt-0.5 block text-[10px] leading-snug text-slate-400">
+                    Appended as a sentence — there is no negative-prompt field.
+                  </span>
+                </label>
+              </div>
+
+              {/* ── Strategy ─────────────────────────────────────────────────────────────── */}
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[11px] font-semibold text-slate-700">How this scene stays consistent</p>
+
+                <label className="mt-2 block">
+                  <span className="text-[11px] text-slate-600">Continue from</span>
+                  <select
+                    value={form.continuesFrom ?? ""}
+                    onChange={(e) => save({ continuesFrom: e.target.value || null })}
+                    disabled={closed || earlier.length === 0}
+                    className={`${box} mt-1`}
+                  >
+                    <option value="">Nothing — this scene stands on its own</option>
+                    {earlier.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        Scene {e.seq}
+                        {e.prompt ? ` — ${e.prompt.slice(0, 40)}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="mt-2">
+                  <span className="text-[11px] text-slate-600">
+                    Reference images <span className="text-slate-400">({images.length}/6)</span>
+                  </span>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {images.map((img, i) => (
+                      <div key={img.key} className="relative">
+                        <img
+                          src={img.url}
+                          alt={`IMAGE_REF_${i}`}
+                          className="h-14 w-14 rounded border border-slate-200 object-cover"
+                        />
+                        <span className="absolute -bottom-1 left-0 rounded bg-slate-900 px-1 text-[9px] font-mono text-white">
+                          {i}
+                        </span>
+                        {!closed && (
+                          <button
+                            type="button"
+                            onClick={() => save(undefined, images.filter((x) => x.key !== img.key))}
+                            className="absolute -right-1 -top-1 rounded-full bg-white px-1 text-[10px] font-bold text-rose-600 shadow"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    {!closed && images.length < 6 && !continuing && (
+                      <ImagePicker busy={uploading} onPick={pickImage} />
+                    )}
+                  </div>
+
+                  <p className="mt-1.5 text-[10px] leading-snug text-slate-400">
+                    Addressed in the prompt as{" "}
+                    <code className="font-mono">&lt;IMAGE_REF_0&gt;</code> upward. This is how a face
+                    and an outfit survive a cut to a new angle.
+                  </p>
+                </div>
+
+                {conflict && (
+                  <p className="mt-2 rounded bg-rose-50 px-2 py-1.5 text-[10px] leading-snug text-rose-800">
+                    A continuing scene cannot also carry reference images — it continues from the
+                    previous take&rsquo;s last frame. Clear one or the other before rendering.
+                  </p>
+                )}
+                {continuing && !conflict && (
+                  <p className="mt-2 text-[10px] leading-snug text-slate-500">
+                    Continuations inherit the camera, lighting and characters automatically — and
+                    cannot introduce a new angle. For a cut, clear this and use references instead.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() =>
+                    start(async () => {
+                      const result = await previewScene(patch())
+                      setPreview(result.prompt ?? result.error ?? "")
+                    })
+                  }
+                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Show exact prompt
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-50"
+                >
+                  Collapse
+                </button>
+                {message?.error && <span className="text-[11px] text-rose-700">{message.error}</span>}
+              </div>
+
+              {preview !== null && (
+                <pre className="whitespace-pre-wrap rounded-lg bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">
+                  {preview}
+                </pre>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="w-full text-left text-[11px] leading-relaxed text-slate-500 hover:text-slate-700"
+            >
+              {[form.shotType, form.cameraMove].filter(Boolean).join(" · ") || "No camera set"} ·{" "}
+              {form.targetSeconds}s{form.audioNote ? ` · ${form.audioNote}` : ""} — click to edit
+            </button>
+          )}
+        </div>
+
+        {/* ── The takes ─────────────────────────────────────────────────────────────────── */}
+        <div className="space-y-2">
+          {!closed && (
+            <button
+              type="button"
+              disabled={pending || isRendering || conflict || blockedByCeiling || !form.prompt.trim()}
+              onClick={() =>
                 start(async () => {
-                  await abandonShot(reelId, shot.id)
+                  setMessage(await renderScene(reelId, scene.id))
                   onChanged()
                 })
-              }}
-              className="mt-2 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              }
+              className="w-full rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
             >
-              Give up on this one
+              {isRendering
+                ? "Rendering…"
+                : scene.takes.length === 0
+                  ? `Render — about $${((form.targetSeconds * CENTS_PER_SECOND) / 100).toFixed(2)}`
+                  : `Another take — about $${((form.targetSeconds * CENTS_PER_SECOND) / 100).toFixed(2)}`}
             </button>
           )}
 
-          {shot.status === "ready" && !shot.interactionId && (
-            <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-900">
-              Google returned no reference for this shot, so the chain cannot continue from it.
+          {scene.takes.length === 0 && (
+            <p className="rounded-lg border border-dashed border-slate-200 px-2 py-6 text-center text-[11px] text-slate-400">
+              No takes yet
             </p>
           )}
+
+          {[...scene.takes].reverse().map((take) => (
+            <TakeCard
+              key={take.id}
+              take={take}
+              reelId={reelId}
+              sceneId={scene.id}
+              chosen={take.id === scene.chosenTakeId}
+              closed={closed}
+              onChanged={onChanged}
+            />
+          ))}
         </div>
       </div>
     </article>
   )
 }
 
-/** One image slot. Click or drop; the file is stored immediately so the prompt can be edited freely. */
-function AnchorSlot({
-  label,
-  hint,
-  value,
-  busy,
-  disabled,
-  onPick,
-  onClear,
+function TakeCard({
+  take,
+  reelId,
+  sceneId,
+  chosen,
+  closed,
+  onChanged,
 }: {
-  label: string
-  hint: string
-  value: { url: string } | null
-  busy: boolean
-  disabled?: boolean
-  onPick: (file: File) => void
-  onClear: () => void
+  take: BuilderTake
+  reelId: string
+  sceneId: string
+  chosen: boolean
+  closed: boolean
+  onChanged: () => void
 }) {
+  const [pending, start] = useTransition()
+
+  return (
+    <div
+      className={`rounded-lg border p-2 ${
+        chosen ? "border-emerald-400 bg-emerald-50" : "border-slate-200 bg-white"
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-semibold text-slate-500">Take {take.attempt}</span>
+        {chosen && (
+          <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+            USING
+          </span>
+        )}
+        <span className="ml-auto text-[10px] tabular-nums text-slate-500">
+          {take.seconds ? `${take.seconds.toFixed(1)}s` : ""}
+          {take.costCents !== null && ` · $${(take.costCents / 100).toFixed(2)}`}
+        </span>
+      </div>
+
+      {take.status === "ready" && take.videoUrl ? (
+        <video
+          src={take.videoUrl}
+          controls
+          preload="metadata"
+          className="mt-1.5 w-full rounded border border-slate-200 bg-slate-900"
+        />
+      ) : (
+        <div className="mt-1.5 flex h-20 items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50 text-[10px] text-slate-400">
+          {take.status === "rendering" ? "Rendering…" : "Failed"}
+        </div>
+      )}
+
+      {take.error && (
+        <p className="mt-1.5 break-words rounded bg-rose-50 px-2 py-1 text-[10px] leading-snug text-rose-800">
+          {take.error}
+        </p>
+      )}
+
+      {!closed && take.status === "ready" && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() =>
+            start(async () => {
+              await chooseTake(reelId, sceneId, chosen ? null : take.id)
+              onChanged()
+            })
+          }
+          className={`mt-1.5 w-full rounded px-2 py-1 text-[10px] font-semibold disabled:opacity-50 ${
+            chosen
+              ? "border border-slate-200 text-slate-600 hover:bg-slate-50"
+              : "bg-emerald-600 text-white hover:bg-emerald-700"
+          }`}
+        >
+          {chosen ? "Unpick" : "Use this take"}
+        </button>
+      )}
+
+      {!closed && take.status === "rendering" && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (!confirm("Mark this render failed? Use only if the backend restarted — it may still have been billed."))
+              return
+            start(async () => {
+              await abandonTake(reelId, take.id)
+              onChanged()
+            })
+          }}
+          className="mt-1.5 w-full rounded border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+        >
+          Give up on this one
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Click or drop. Stored immediately so the prompt can keep being edited. */
+function ImagePicker({ busy, onPick }: { busy: boolean; onPick: (file: File) => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
 
-  if (value) {
-    return (
-      <div className="relative">
-        <img src={value.url} alt={label} className="aspect-square w-full rounded-lg border border-slate-200 object-cover" />
-        <button
-          type="button"
-          onClick={onClear}
-          className="absolute right-1 top-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 shadow"
-        >
-          Remove
-        </button>
-        <p className="mt-1 text-[10px] text-slate-500">{label}</p>
-      </div>
-    )
-  }
-
   return (
-    <div>
+    <>
       <button
         type="button"
-        disabled={disabled || busy}
+        disabled={busy}
         onClick={() => input.current?.click()}
         onDragOver={(e) => {
-          if (disabled) return
           e.preventDefault()
           setOver(true)
         }}
@@ -491,14 +701,11 @@ function AnchorSlot({
           const file = e.dataTransfer.files?.[0]
           if (file) onPick(file)
         }}
-        className={`flex aspect-square w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed px-2 text-center transition ${
-          over ? "border-slate-500 bg-slate-100" : "border-slate-300 bg-slate-50 hover:border-slate-400"
+        className={`flex h-14 w-14 items-center justify-center rounded border border-dashed text-[10px] font-semibold transition ${
+          over ? "border-slate-500 bg-slate-100 text-slate-700" : "border-slate-300 text-slate-400 hover:border-slate-400"
         } disabled:opacity-40`}
       >
-        <span className="text-[11px] font-semibold text-slate-600">
-          {busy ? "Uploading…" : label}
-        </span>
-        <span className="text-[10px] leading-tight text-slate-400">{busy ? "" : hint}</span>
+        {busy ? "…" : "+ ref"}
       </button>
       <input
         ref={input}
@@ -512,6 +719,6 @@ function AnchorSlot({
           e.target.value = ""
         }}
       />
-    </div>
+    </>
   )
 }

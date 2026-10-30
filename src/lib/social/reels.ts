@@ -1,33 +1,43 @@
 import { getDbPool } from "@/lib/db"
-import { type ShotMode, type ShotStatus } from "./shot-types"
+import { type TakeStatus } from "./shot-types"
 
-/* Re-exported so a server component can keep importing everything reel-related from one place. */
-export { MODE_LABEL, dollars, type ShotMode, type ShotStatus } from "./shot-types"
+export { AUDIO_PRESETS, CAMERA_MOVES, SHOT_TYPES, dollars, type TakeStatus } from "./shot-types"
 
 /**
- * Reading reels and their shots.
+ * Reading storyboards.
  *
- * Straight from the database, like every other OPS screen. The writes — creating a reel, starting
- * a render, saving an API key — all go through the backend, because that is where the operator's
- * encrypted key lives and where the money is spent. See the actions file.
+ * Straight from the database, like every other OPS screen. The writes — planning a scene, starting
+ * a render, saving an API key — go through the backend, because that is where the operator's
+ * encrypted key lives and where the money is spent.
  */
 
-export interface Shot {
+export interface Take {
   id: string
-  seq: number
-  mode: ShotMode
-  prompt: string
-  firstImageKey: string | null
-  lastImageKey: string | null
+  attempt: number
+  composedPrompt: string
   interactionId: string | null
   videoUrl: string | null
   seconds: number | null
   cumulative: boolean | null
-  status: ShotStatus
+  status: TakeStatus
   error: string | null
   costCents: number | null
-  startedAt: string | null
-  finishedAt: string | null
+  startedAt: string
+}
+
+export interface Scene {
+  id: string
+  seq: number
+  prompt: string
+  shotType: string
+  cameraMove: string
+  audioNote: string
+  avoid: string
+  targetSeconds: number
+  continuesFrom: string | null
+  imageKeys: string[]
+  chosenTakeId: string | null
+  takes: Take[]
 }
 
 export interface Reel {
@@ -40,7 +50,7 @@ export interface Reel {
   status: string
   createdAt: string
   createdByName: string | null
-  shots: Shot[]
+  scenes: Scene[]
 }
 
 export interface ReelSummary {
@@ -52,67 +62,84 @@ export interface ReelSummary {
   targetSeconds: number
   status: string
   createdAt: string
-  shotCount: number
-  readyCount: number
+  sceneCount: number
+  renderedCount: number
   renderingCount: number
-  /** Seconds across ready shots — see `runningSeconds` for why this is not simply their sum. */
   seconds: number
   costCents: number
+}
+
+/** The take a scene settled on, or nothing while it is still being decided. */
+export function chosenTake(scene: Scene): Take | null {
+  return scene.takes.find((t) => t.id === scene.chosenTakeId) ?? null
 }
 
 /**
  * How long the reel actually runs.
  *
- * ── Why this is not the sum of the shots ──────────────────────────────────────────────────────
+ * ── Why this is not simply the sum of the scenes ──────────────────────────────────────────────
  * Because it depends on something Google does not document: whether extending a clip returns the
- * continuation alone or the whole clip so far. If it returns the whole thing, every shot after the
- * first already contains the ones before it, and adding them up would claim a 10-second reel is 45
- * seconds long.
+ * continuation alone or the whole clip so far. If it returns the whole thing, a continuing scene
+ * already contains everything before it, and adding them up would claim a 10-second reel runs 45
+ * seconds.
  *
- * So each shot records what was observed — `cumulative` — and this trusts that. When the last ready
- * shot is cumulative, it IS the reel and its own length is the answer. Otherwise the parts are
- * summed. Until a continuation has been measured the two agree anyway, because there is only one
- * shot.
+ * So each take records what was observed, and this trusts that. When the last chosen take is
+ * cumulative it IS the reel, and its own length is the answer.
  */
-export function runningSeconds(shots: Shot[]): number {
-  const ready = shots.filter((s) => s.status === "ready")
-  if (!ready.length) return 0
+export function runningSeconds(scenes: Scene[]): number {
+  const chosen = scenes.map(chosenTake).filter((t): t is Take => Boolean(t && t.status === "ready"))
+  if (!chosen.length) return 0
 
-  const last = ready[ready.length - 1]
+  const last = chosen[chosen.length - 1]
   if (last.cumulative && last.seconds) return Number(last.seconds)
 
-  return ready.reduce((total, s) => total + Number(s.seconds ?? 0), 0)
+  return chosen.reduce((total, t) => total + Number(t.seconds ?? 0), 0)
+}
+
+/** Every take ever attempted, which is what the reel actually cost — not just the keepers. */
+export function totalCostCents(scenes: Scene[]): number {
+  return scenes.reduce(
+    (sum, scene) => sum + scene.takes.reduce((s, t) => s + (t.costCents ?? 0), 0),
+    0
+  )
 }
 
 /** Whether a finished reel needs stitching, which is the practical question `cumulative` answers. */
-export function needsStitching(shots: Shot[]): boolean | null {
-  const measured = shots.filter((s) => s.status === "ready" && s.cumulative !== null)
+export function needsStitching(scenes: Scene[]): boolean | null {
+  const measured = scenes
+    .flatMap((s) => s.takes)
+    .filter((t) => t.status === "ready" && t.cumulative !== null)
   if (!measured.length) return null
   return !measured[measured.length - 1].cumulative
 }
 
 export async function listReels(): Promise<ReelSummary[]> {
   const { rows } = await getDbPool().query(
-    `SELECT r.id, r.title, r.brand, r.aspect_ratio, r.resolution, r.target_seconds,
+    `WITH chosen AS (
+       SELECT s.reel_id, s.seq, t.seconds, t.cumulative
+         FROM social.reel_scenes s
+         JOIN social.reel_takes t ON t.id = s.chosen_take_id AND t.status = 'ready'
+     )
+     SELECT r.id, r.title, r.brand, r.aspect_ratio, r.resolution, r.target_seconds,
             r.status, r.created_at,
-            COUNT(s.id)::int                                            AS shot_count,
-            COUNT(s.id) FILTER (WHERE s.status = 'ready')::int           AS ready_count,
-            COUNT(s.id) FILTER (WHERE s.status = 'rendering')::int       AS rendering_count,
-            COALESCE(SUM(s.cost_cents) FILTER (WHERE s.status = 'ready'), 0)::int AS cost_cents,
-            /* The cumulative flag on the LAST ready shot decides whether the parts overlap, so the
-               length is resolved in SQL the same way runningSeconds resolves it in TypeScript. */
+            (SELECT count(*)::int FROM social.reel_scenes s WHERE s.reel_id = r.id) AS scene_count,
+            (SELECT count(*)::int FROM chosen c WHERE c.reel_id = r.id)             AS rendered_count,
+            (SELECT count(*)::int FROM social.reel_scenes s
+               JOIN social.reel_takes t ON t.scene_id = s.id
+              WHERE s.reel_id = r.id AND t.status = 'rendering')                    AS rendering_count,
+            /* Every take, not just the keepers — this is what the reel cost. */
+            COALESCE((SELECT SUM(t.cost_cents)::int FROM social.reel_scenes s
+               JOIN social.reel_takes t ON t.scene_id = s.id
+              WHERE s.reel_id = r.id AND t.status = 'ready'), 0)                    AS cost_cents,
+            /* Mirrors runningSeconds: a cumulative final take is the whole reel on its own. */
             COALESCE((
               SELECT CASE WHEN last.cumulative THEN last.seconds
-                          ELSE (SELECT SUM(x.seconds) FROM social.reel_shots x
-                                 WHERE x.reel_id = r.id AND x.status = 'ready')
+                          ELSE (SELECT SUM(c.seconds) FROM chosen c WHERE c.reel_id = r.id)
                      END
-                FROM social.reel_shots last
-               WHERE last.reel_id = r.id AND last.status = 'ready'
+                FROM chosen last WHERE last.reel_id = r.id
                ORDER BY last.seq DESC LIMIT 1
             ), 0) AS seconds
        FROM social.reels r
-       LEFT JOIN social.reel_shots s ON s.reel_id = r.id
-      GROUP BY r.id
       ORDER BY r.created_at DESC
       LIMIT 200`
   )
@@ -126,8 +153,8 @@ export async function listReels(): Promise<ReelSummary[]> {
     targetSeconds: r.target_seconds,
     status: r.status,
     createdAt: r.created_at,
-    shotCount: r.shot_count,
-    readyCount: r.ready_count,
+    sceneCount: r.scene_count,
+    renderedCount: r.rendered_count,
     renderingCount: r.rendering_count,
     seconds: Number(r.seconds ?? 0),
     costCents: r.cost_cents,
@@ -135,23 +162,32 @@ export async function listReels(): Promise<ReelSummary[]> {
 }
 
 export async function getReel(id: string): Promise<Reel | null> {
-  /* A malformed id would make the ::uuid cast throw, and a bad URL is a not-found rather than a
-     server error. */
+  /* A malformed id would make the ::uuid cast throw, and a bad URL is a not-found. */
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null
 
   const { rows } = await getDbPool().query(
     `SELECT r.*, COALESCE(NULLIF(u.name, ''), u.email) AS created_by_name,
             COALESCE((
               SELECT json_agg(json_build_object(
-                       'id', s.id, 'seq', s.seq, 'mode', s.mode, 'prompt', s.prompt,
-                       'firstImageKey', s.first_image_key, 'lastImageKey', s.last_image_key,
-                       'interactionId', s.interaction_id, 'videoUrl', s.video_url,
-                       'seconds', s.seconds, 'cumulative', s.cumulative,
-                       'status', s.status, 'error', s.error, 'costCents', s.cost_cents,
-                       'startedAt', s.started_at, 'finishedAt', s.finished_at
+                       'id', s.id, 'seq', s.seq, 'prompt', s.prompt,
+                       'shotType', s.shot_type, 'cameraMove', s.camera_move,
+                       'audioNote', s.audio_note, 'avoid', s.avoid,
+                       'targetSeconds', s.target_seconds, 'continuesFrom', s.continues_from,
+                       'imageKeys', s.image_keys, 'chosenTakeId', s.chosen_take_id,
+                       'takes', COALESCE((
+                         SELECT json_agg(json_build_object(
+                                  'id', t.id, 'attempt', t.attempt,
+                                  'composedPrompt', t.composed_prompt,
+                                  'interactionId', t.interaction_id, 'videoUrl', t.video_url,
+                                  'seconds', t.seconds, 'cumulative', t.cumulative,
+                                  'status', t.status, 'error', t.error,
+                                  'costCents', t.cost_cents, 'startedAt', t.started_at
+                                ) ORDER BY t.attempt)
+                           FROM social.reel_takes t WHERE t.scene_id = s.id
+                       ), '[]'::json)
                      ) ORDER BY s.seq)
-                FROM social.reel_shots s WHERE s.reel_id = r.id
-            ), '[]'::json) AS shots
+                FROM social.reel_scenes s WHERE s.reel_id = r.id
+            ), '[]'::json) AS scenes
        FROM social.reels r
        LEFT JOIN baker_network.ops_users u ON u.id = r.created_by
       WHERE r.id = $1::uuid`,
@@ -171,18 +207,23 @@ export async function getReel(id: string): Promise<Reel | null> {
     status: r.status,
     createdAt: r.created_at,
     createdByName: r.created_by_name ?? null,
-    shots: (r.shots ?? []).map((s: Record<string, unknown>) => ({
+    scenes: (r.scenes ?? []).map((s: Record<string, unknown>) => ({
       ...s,
-      seconds: s.seconds === null ? null : Number(s.seconds),
-    })) as Shot[],
+      imageKeys: (s.imageKeys as string[]) ?? [],
+      /* Postgres NUMERIC arrives as a string; the arithmetic downstream assumes a number. */
+      takes: ((s.takes as Record<string, unknown>[]) ?? []).map((t) => ({
+        ...t,
+        seconds: t.seconds === null ? null : Number(t.seconds),
+      })),
+    })) as Scene[],
   }
 }
 
 /**
- * The public URL for a stored anchor frame.
+ * The public URL for a stored reference image.
  *
- * Built here rather than stored on the row, so the bucket or the CDN in front of it can change
- * without rewriting history. Mirrors the backend's own helper — if that one moves, this follows.
+ * Built here rather than stored on the row, so the bucket or a CDN in front of it can change
+ * without rewriting history. Mirrors the backend's helper — if that moves, this follows.
  */
 export function anchorUrl(key: string): string {
   const bucket = process.env.S3_BUCKET || "pranajiva-innovations"

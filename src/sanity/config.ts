@@ -2,8 +2,13 @@ import { defineConfig, type WorkspaceOptions } from "sanity"
 import { structureTool } from "sanity/structure"
 import { visionTool } from "@sanity/vision"
 
+import type { SchemaTypeDefinition } from "sanity"
+
 import { CROSSFRIEND, PRANAJIVA, SANITY_API_VERSION, type BrandConfig } from "./env"
-import { schemaTypes } from "./schemas"
+import { crossfriendSchemaTypes, pranajivaSchemaTypes } from "./schemas"
+
+/** The document types that get a page of their own at /knowledge/<slug>. */
+const ENTRY_TYPES = ["article", "remedy", "practice"]
 
 /**
  * Studio configuration for the two brands.
@@ -20,7 +25,7 @@ import { schemaTypes } from "./schemas"
  * not error — it produces a Studio that loads once and then navigates to URLs that do not exist, so
  * it must match the route segment exactly.
  */
-function brandConfig(brand: BrandConfig): WorkspaceOptions {
+function brandConfig(brand: BrandConfig, schemaTypes: SchemaTypeDefinition[]): WorkspaceOptions {
   return defineConfig({
     name: brand.projectId,
     title: brand.title,
@@ -43,12 +48,22 @@ function brandConfig(brand: BrandConfig): WorkspaceOptions {
          checking their work wants to open. */
       productionUrl: async (prev, { document }) => {
         const doc = document as { _type?: string; slug?: { current?: string } }
-        if (doc?._type !== "article" || !doc?.slug?.current) return prev
-        return `${brand.siteUrl}/knowledge/${doc.slug.current}`
+        if (!doc?.slug?.current) return prev
+
+        /* Remedies and practices share the article's URL space — one flat /knowledge/<slug> for
+           every entry, which is why the slug field checks uniqueness across types rather than
+           within one. A concern has a page too, under its own segment. */
+        if (doc._type && ENTRY_TYPES.includes(doc._type)) {
+          return `${brand.siteUrl}/knowledge/${doc.slug.current}`
+        }
+        if (doc._type === "concern") {
+          return `${brand.siteUrl}/knowledge/for/${doc.slug.current}`
+        }
+        return prev
       },
     },
   }) as WorkspaceOptions
 }
 
-export const crossfriendConfig = brandConfig(CROSSFRIEND)
-export const pranajivaConfig = brandConfig(PRANAJIVA)
+export const crossfriendConfig = brandConfig(CROSSFRIEND, crossfriendSchemaTypes)
+export const pranajivaConfig = brandConfig(PRANAJIVA, pranajivaSchemaTypes)
