@@ -168,7 +168,13 @@ const BRANDS: Brand[] = [
            the only thing on this brand with a clock on it. */
         label: "Shop",
         accent: "emerald",
-        items: [{ href: "/pranajiva/orders", label: "Orders", icon: "receipt" }],
+        items: [
+          { href: "/pranajiva/orders", label: "Orders", icon: "receipt" },
+          /* Beside orders because it is the same job — an address, and something to put in an
+             envelope. It is also the only inbox these requests have: nothing in this stack can
+             email anyone when one arrives. */
+          { href: "/pranajiva/samples", label: "Free samples", icon: "tag" },
+        ],
       },
       {
         label: "Knowledge base",
