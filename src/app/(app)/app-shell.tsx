@@ -174,6 +174,8 @@ const BRANDS: Brand[] = [
              envelope. It is also the only inbox these requests have: nothing in this stack can
              email anyone when one arrives. */
           { href: "/pranajiva/samples", label: "Free samples", icon: "tag" },
+          /* The footer sign-up box. Read-only: nothing here can send mail. */
+          { href: "/pranajiva/subscribers", label: "Email sign-ups", icon: "message" },
         ],
       },
       {
